@@ -7,9 +7,9 @@ import sys
 
 import pyaudio
 
-#from gpiozero import PWMOutputDevice
-#from gpiozero import DigitalInputDevice
-#from gpiozero import DigitalOutputDevice
+from gpiozero import PWMOutputDevice
+from gpiozero import DigitalInputDevice
+from gpiozero import DigitalOutputDevice
 
 
 VOLUME = 0.5
@@ -25,17 +25,18 @@ def audio_samples():
         tick += 1
 
 
-#shk_pin = DigitalInputDevice(pin=27, bounce_time=0.01)
+shk_pin = DigitalInputDevice(pin=27, bounce_time=0.01)
 
-#rm_dev = DigitalOutputDevice(pin=17)   # RM (ringing mode) pin
-#fr_dev = PWMOutputDevice(  # FR (forward/reverse) pin
-#    pin=12,
-#    active_high=False,
-#    frequency=20,
-#    initial_value=0,
-#)
+rm_dev = DigitalOutputDevice(pin=17)   # RM (ringing mode) pin
+fr_dev = PWMOutputDevice(  # FR (forward/reverse) pin
+    pin=12,
+    active_high=False,
+    frequency=20,
+    initial_value=0,
+)
 
 
+ON_HOOK = Event()
 OFF_HOOK = Event()
 
 
@@ -50,23 +51,32 @@ def ring_me():
         OFF_HOOK.wait(3)
 
 
+def stop_ringing():
+    print("Stopping ringing?")
+    OFF_HOOK.set()
+    print("Canceled ringing?")
+
+
+def stop_tone():
+    print("Stopping dial tone?")
+    ON_HOOK.set()
+    print("Canceled dial tone?")
+
+
 def main():
     aud = pyaudio.PyAudio()
 
     print("Running")
 
-    #def stop_ringing():
-    #    print("Stopping ringing?")
-    #    OFF_HOOK.set()
-    #    print("Canceled ringing?")
+    shk_pin.when_activated = stop_ringing
+    shk_pin.when_deactivated = stop_tone
 
-    #shk_pin.when_activated = stop_ringing
+    ring_me()
 
-    #ring_me()
-
+    print("Playing dial tone")
     stream = aud.open(
         format=pyaudio.paFloat32,
-        channels=1 if sys.platform == 'darwin' else 2,
+        channels=1,
         rate=SAMPLING_F,
         output=True,
     )
