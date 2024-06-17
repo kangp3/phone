@@ -14,6 +14,7 @@ from gpiozero import DigitalOutputDevice
 
 VOLUME = 0.5
 SAMPLING_F = 44100
+AUDIO_CHUNK_SIZE = 40960
 TONES = [350, 440]
 
 
@@ -66,6 +67,15 @@ def stop_tone():
 def main():
     aud = pyaudio.PyAudio()
 
+    print("Generating dial tone")
+    dial_tone_samples = [
+        sum([
+            VOLUME * math.sin(2 * math.pi * tick * tone / SAMPLING_F)
+            for tone in TONES
+        ])
+        for tick in range(SAMPLING_F * 5)
+    ]
+
     print("Running")
 
     shk_pin.when_activated = stop_ringing
@@ -78,16 +88,12 @@ def main():
         format=pyaudio.paFloat32,
         channels=1,
         rate=SAMPLING_F,
+        frames_per_buffer=AUDIO_CHUNK_SIZE,
         output=True,
     )
-    samples = [
-        sum([
-            VOLUME * math.sin(2 * math.pi * tick * tone / SAMPLING_F)
-            for tone in TONES
-        ])
-        for tick in range(SAMPLING_F * 10)
-    ]
-    stream.write(array.array('f', samples).tobytes())
+    bytes = array.array('f', dial_tone_samples).tobytes()
+    for i in range(0, len(bytes), AUDIO_CHUNK_SIZE):
+        stream.write(bytes[i:i+AUDIO_CHUNK_SIZE])
 
 
 if __name__ == "__main__":
