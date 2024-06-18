@@ -19,6 +19,18 @@ def main():
 
     print("Running")
 
+    beat_width = 490
+    sample_length = beat_width * 9
+    samples = [
+        sum([
+            VOLUME * math.sin(2 * math.pi * tick * tone / SAMPLING_F)
+            for tone in TONES
+        ])
+        for tick in range(sample_length)
+    ]
+    print("Outputting sound")
+    bytes = array.array('f', samples).tobytes()
+
     stream = aud.open(
         format=pyaudio.paFloat32,
         channels=1,
@@ -26,17 +38,8 @@ def main():
         frames_per_buffer=CHUNK_SIZE,
         output=True,
     )
-    samples = [
-        sum([
-            VOLUME * math.sin(2 * math.pi * tick * tone / SAMPLING_F)
-            for tone in TONES
-        ])
-        for tick in range(SAMPLING_F * 2)
-    ]
-    print("Outputting sound")
-    bytes = array.array('f', samples).tobytes()
-    for i in range(0, len(bytes), CHUNK_SIZE):
-        stream.write(bytes[i:i+CHUNK_SIZE])
+    while True:
+        stream.write(bytes)
 
 
 if __name__ == "__main__":
