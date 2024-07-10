@@ -14,6 +14,7 @@ fr_dev = PWMOutputDevice(  # FR (forward/reverse) pin
 )
 
 
+print("Ringing!")
 while True:
     rm_dev.on()
     fr_dev.value = 0.5
