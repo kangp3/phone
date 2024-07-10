@@ -7,9 +7,9 @@ connect landline phones to other landline phones via a private VoIP network. At 
 come to house more complete companion software as the project grows.
 
 1. ~~Ring phone via software~~
-  - Completed in [ring.py](ring.py)
+    - Completed in [ring.py](ring.py)
 2. ~~Play audio on phone speaker~~
-  - Completed in [wav.py](wav.py)
+    - Completed in [wav.py](wav.py)
 3. Receive audio from phone and convert to digital signal
 4. Parse DTMF signals for dialing
 5. Create system for initial phone setup
