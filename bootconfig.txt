@@ -4,7 +4,7 @@
 
 # Uncomment some or all of these to enable the optional hardware interfaces
 #dtparam=i2c_arm=on
-#dtparam=i2s=on
+dtparam=i2s=on
 dtparam=spi=on
 
 # Enable audio (loads snd_bcm2835)
@@ -25,8 +25,11 @@ auto_initramfs=1
 # Enable DRM VC4 V3D driver
 dtoverlay=vc4-kms-v3d
 dtoverlay=audremap,enable_jack
-dtoverlay=pwm2chan,pin=18,func=2,pin13,func2=4
-max_framebuffer=2
+dtoverlay=pwm2chan,pin=12,func=2,pin=13,func2=4
+max_framebuffers=2
+
+# Enable I2S ADC input
+dtoverlay=genericstereoaudiocodec
 
 # Don't have the firmware create an initial video= setting in cmdline.txt.
 # Use the kernel's default instead.
@@ -44,5 +47,7 @@ arm_boost=1
 # (e.g. for USB device mode) or if USB support is not required.
 otg_mode=1
 
-[all]
+[cm5]
+dtoverlay=dwc2,dr_mode=host
 
+[all]

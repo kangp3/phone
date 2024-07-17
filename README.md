@@ -9,7 +9,7 @@ come to house more complete companion software as the project grows.
     - Completed in [ring.py](ring.py)
 2. ~~Play audio on phone speaker~~
     - Completed in [wav.py](wav.py)
-3. Receive audio from phone and convert to digital signal
+3. ~~Receive audio from phone and convert to digital signal~~
 4. Parse DTMF signals for dialing
 5. Create system for initial phone setup
 6. Create web app for call routing and social networking
@@ -34,3 +34,8 @@ speaker-test -t sine -f 440 -l0
 ## Relevant Material
 - [SLIC datasheet](https://silvertel.com/images/datasheets/Ag1171-datasheet-Low-cost-ringing-SLIC-with-single-supply.pdf)
 - [gpiozero docs](https://gpiozero.readthedocs.io/en/latest/)
+- [Cringely-named DT overlay](https://github.com/AkiyukiOkayasu/RaspberryPi_I2S_Slave)
+    - Comment out playback and codec_out
+    - dai-tdm-slot-width to 24
+    - Add in capture_link block mclk-fs = <256>
+    - Add in r_codec_dai system-clock-frequency = <2560000>
