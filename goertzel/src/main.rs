@@ -1,26 +1,26 @@
-use std::fs::File;
-use std::io::BufReader;
+use std::f64::consts;
 
 use hound;
-use hound::WavSamples;
 use itertools::Itertools;
-use itertools::Chunk;
 
 
-const WINDOW_INTERVAL: usize = 3000;
-const CHUNK_SIZE: usize = 3000;
-const COEFFS: [f64;7] = [
-    1.9915137618771384,
-    1.9899020339626003,
-    1.9876909939485932,
-    1.9847500449657665,
-    1.9747170780302008,
-    1.9691286690584107,
-    1.9629874688668658,
-];
+const FNAME: &str = "/Users/kangp3/Documents/projects/phone/audio_samples/cortelco_48k.wav";
+const WINDOW_INTERVAL: u32 = 3000;
+const CHUNK_SIZE: u32 = 3000;
+const SAMPLE_FREQ: u32 = 48000;
+const FREQS: [u32;7] = [697, 770, 852, 941, 1209, 1336, 1477];
 
 
-fn goertzel_me(samples: &Vec<i32>, mut q1: f64, mut q2: f64, coeff: f64) -> (f64, f64, f64, f64){
+fn goertzel_coeff(target_freq: u32, sample_freq: u32) -> f64 {
+    2.0 * (
+        2.0 * consts::PI / CHUNK_SIZE as f64 * (
+            0.5 + CHUNK_SIZE as f64 * target_freq as f64 / sample_freq as f64
+        )
+    ).cos()
+}
+
+
+fn goertzel_me(samples: &Vec<i32>, mut q1: f64, mut q2: f64, coeff: f64) -> (f64, f64, f64, f64) {
     let mut q0: f64 = 0.0;
     for sample in samples {
         let sample: f64 = (*sample).try_into().unwrap();
@@ -33,18 +33,42 @@ fn goertzel_me(samples: &Vec<i32>, mut q1: f64, mut q2: f64, coeff: f64) -> (f64
 
 
 fn main() {
-    let MAG_THRESHOLD: f64 = 23.5_f64.exp();
+    let mag_threshold = 42.5_f64.exp();
+    let coeffs = FREQS.map(|f| goertzel_coeff(f, SAMPLE_FREQ));
 
-    let mut reader = hound::WavReader::open("/Users/kangp3/Documents/projects/phone/audio_samples/cortelco_48k.wav").unwrap();
+    let mut reader = hound::WavReader::open(FNAME).unwrap();
+    dbg!(reader.spec());
     let samples = reader.samples::<i32>();
 
     let mut found_digits = vec![];
-    for chunk in samples.chunks(WINDOW_INTERVAL).into_iter() {
+    for (idx, chunk) in samples.step_by(2).chunks(WINDOW_INTERVAL as usize).into_iter().enumerate() {
+        let idx = idx * WINDOW_INTERVAL as usize;
         let chunk = chunk.collect::<Result<Vec<i32>, _>>().unwrap();
-        let (mag_0, _, _, _) = goertzel_me(&chunk, 0.0, 0.0, COEFFS[0]);
-        let (mag_4, _, _, _) = goertzel_me(&chunk, 0.0, 0.0, COEFFS[4]);
-        if mag_0 > MAG_THRESHOLD && mag_4 > MAG_THRESHOLD {
-            found_digits.push(1);
+
+        let active_freqs: Vec<_> = coeffs
+            .iter()
+            .map(|c| goertzel_me(&chunk, 0.0, 0.0, *c).0)
+            .enumerate()
+            .filter_map(|(idx, mag)| (mag > mag_threshold).then_some(idx))
+            .collect();
+        let digit = match active_freqs[..] {
+            [0, 4] => 1,
+            [0, 5] => 2,
+            [0, 6] => 3,
+            [1, 4] => 4,
+            [1, 5] => 5,
+            [1, 6] => 6,
+            [2, 4] => 7,
+            [2, 5] => 8,
+            [2, 6] => 9,
+            [3, 4] => 10,
+            [3, 5] => 11,
+            [3, 6] => 12,
+            _ => 0,
+        };
+        if digit != 0 {
+            dbg!(digit);
+            found_digits.push(digit);
         }
     };
     dbg!(found_digits);
