@@ -12,7 +12,7 @@ use ringbuf::SharedRb;
 use ringbuf::traits::{RingBuffer, Consumer};
 
 
-const FNAME: &str = "/Users/kangp3/Documents/projects/phone/audio_samples/cortelco_48k.wav";
+const FNAME: &str = "cortelco_48k.wav";
 const WINDOW_INTERVAL: u32 = 1000;
 const CHUNK_SIZE: u32 = 3000;
 const SAMPLE_FREQ: u32 = 48000;
