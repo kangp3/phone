@@ -28,6 +28,7 @@ fn goertzel_coeff(target_freq: u32, sample_freq: u32) -> f64 {
 }
 
 
+// TODO: Struct this with ring buffers?
 fn goertzel_me(samples: Chain<Iter<i32>, Iter<i32>>, mut q1: f64, mut q2: f64, coeff: f64) -> (f64, f64, f64, f64) {
     let mut q0: f64 = 0.0;
     for sample in samples {
@@ -83,6 +84,7 @@ fn main() {
 
     let mut sample_idx = 0;
     let mut chunk = SharedRb::<Heap<i32>>::new(CHUNK_SIZE as usize);
+    let mut last_digit = 0;
     while let Ok(sample) = rcv_ch.recv_timeout(Duration::from_millis(100)) {
         chunk.push_overwrite(sample);
         if sample_idx >= CHUNK_SIZE && sample_idx % WINDOW_INTERVAL == 0 {
@@ -108,9 +110,10 @@ fn main() {
                 [3, 6] => 12,
                 _ => 0,
             };
-            if digit != 0 {
+            if digit != 0 && digit != last_digit {
                 dbg!(digit);
             }
+            last_digit = digit;
         }
 
         sample_idx += 1;
