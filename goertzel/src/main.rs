@@ -76,7 +76,7 @@ fn main() {
                 playback_idx += 1;
             }
         },
-        move |_| { dbg!("Fuck error handling"); },
+        move |_| { dbg!("Fuck error handling 😮"); },
         None
     ).unwrap();
 
