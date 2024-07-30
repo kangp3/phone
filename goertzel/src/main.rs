@@ -7,14 +7,14 @@ use std::time::Duration;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::Sample;
 use hound;
+use pico_args::Arguments;
 use ringbuf::storage::Heap;
 use ringbuf::SharedRb;
 use ringbuf::traits::{RingBuffer, Consumer};
 
 
-const FNAME: &str = "cortelco_48k.wav";
 const WINDOW_INTERVAL: u32 = 1000;
-const CHUNK_SIZE: u32 = 3000;
+const CHUNK_SIZE: u32 = 1000;
 const SAMPLE_FREQ: u32 = 48000;
 const FREQS: [u32;7] = [697, 770, 852, 941, 1209, 1336, 1477];
 
@@ -42,8 +42,11 @@ fn goertzel_me(samples: Chain<Iter<i32>, Iter<i32>>, mut q1: f64, mut q2: f64, c
 
 
 fn main() {
-    let mag_threshold = 42.5_f64.exp();
+    let mag_threshold = 27.5_f64.exp();
     let coeffs = FREQS.map(|f| goertzel_coeff(f, SAMPLE_FREQ));
+
+    let mut args = Arguments::from_env();
+    let fname = args.value_from_str::<_, String>("-f").unwrap();
 
     let host = cpal::default_host();
     let device = host.default_output_device().unwrap();
@@ -54,7 +57,7 @@ fn main() {
         .next()
         .unwrap();
 
-    let mut reader = hound::WavReader::open(FNAME).unwrap();
+    let mut reader = hound::WavReader::open(fname).unwrap();
     // TODO: Use this as an iterator not a collected vec
     let samples = reader.samples::<i32>().collect::<Result<Vec<_>, _>>().unwrap();
 
