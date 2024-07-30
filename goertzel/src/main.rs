@@ -99,18 +99,7 @@ fn main() {
                 .filter_map(|(idx, mag)| (mag > mag_threshold).then_some(idx))
                 .collect();
             let digit = match active_freqs[..] {
-                [0, 4] => 1,
-                [0, 5] => 2,
-                [0, 6] => 3,
-                [1, 4] => 4,
-                [1, 5] => 5,
-                [1, 6] => 6,
-                [2, 4] => 7,
-                [2, 5] => 8,
-                [2, 6] => 9,
-                [3, 4] => 10,
-                [3, 5] => 11,
-                [3, 6] => 12,
+                [f1, f2] if f2 > 3 => f1*3 + f2-3,
                 _ => 0,
             };
             if digit != 0 && digit != last_digit {
