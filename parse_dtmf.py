@@ -25,7 +25,7 @@ DTMF_ENCODINGS = {
 }
 WINDOW_INTERVAL = 1000
 CHUNK_SIZE = 1000
-GMAG_THRESHOLD = np.exp(27.5)
+GMAG_THRESHOLD = np.exp(28.5)
 
 
 def compute_goertzel_coeff(target_freq: int, sample_freq: int) -> float:
@@ -65,7 +65,7 @@ if __name__ == "__main__":
             for freq in DTMF_FREQS
         ]
         thresh = max([g[0] for g in goertzels]) / 8.0
-        active_freqs = tuple(DTMF_FREQS[idx] for idx, g in enumerate(goertzels) if g[0] > thresh)
+        active_freqs = tuple(DTMF_FREQS[idx] for idx, g in enumerate(goertzels) if g[0] > thresh and g[0] > GMAG_THRESHOLD)
         decoded_val = DTMF_ENCODINGS.get(active_freqs, 0)
         g_mags[sample_idx:sample_idx+len(goertzels)*2] = [i for j in goertzels for i in j]
         decoded_vals[sample_idx+30] = decoded_val * 3

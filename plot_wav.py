@@ -59,7 +59,7 @@ def plot_wav_samples(wav_file, outfile):
         reshaped = samples.reshape(-1, n_channels)
 
         # Extract left channel
-        left_channel = reshaped[:, 1]
+        left_channel = reshaped[:, 0]
 
         # Plot samples
         time = np.linspace(0, len(left_channel), num=len(left_channel))
