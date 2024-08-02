@@ -28,16 +28,34 @@ fn goertzel_coeff(target_freq: u32, sample_freq: u32) -> f64 {
 }
 
 
-// TODO: Struct this with ring buffers?
-fn goertzel_me(samples: Chain<Iter<i32>, Iter<i32>>, mut q1: f64, mut q2: f64, coeff: f64) -> (f64, f64, f64, f64) {
-    let mut q0: f64 = 0.0;
-    for sample in samples {
-        let sample: f64 = (*sample).try_into().unwrap();
-        q0 = coeff * q1 - q2 + sample;
-        q2 = q1;
-        q1 = q0;
+struct Goertzeler {
+    ariana_goertzde: [(f64, SharedRb::<Heap<f64>>);7]
+}
+
+impl Goertzeler {
+    fn new(coeffs: [f64;7]) -> Self {
+        Self {
+            ariana_goertzde: coeffs.map(|c| (c, SharedRb::<Heap<f64>>::new(2)))
+        }
     }
-    return (q1*q1 + q2*q2 - q1*q2*coeff, q0, q1, q2);
+
+    fn push(self: &mut Self, sample: f64) {
+        for (coeff, ring) in &mut self.ariana_goertzde {
+            let mut riter = ring.iter();
+            let q2 = *riter.next().unwrap_or(&0.0);
+            let q1 = *riter.next().unwrap_or(&0.0);
+            ring.push_overwrite(*coeff * q1 - q2 + sample);
+        }
+    }
+
+    fn goertzel_me(self: &Self) -> Vec<f64> {
+        self.ariana_goertzde.iter().map(|(coeff, ring)| {
+            let mut riter = ring.iter();
+            let q2 = *riter.next().unwrap_or(&0.0);
+            let q1 = *riter.next().unwrap_or(&0.0);
+            q1*q1 + q2*q2 - q1*q2*coeff
+        }).collect()
+    }
 }
 
 
@@ -65,7 +83,6 @@ fn main() {
         .unwrap();
 
     let reader = hound::WavReader::open(fname).unwrap();
-    // TODO: Use this as an iterator not a collected vec
     let mut samples = reader.into_samples::<i32>();
 
     let (send_ch, rcv_ch) = channel::<i32>();
@@ -78,7 +95,7 @@ fn main() {
                 if playback_idx % 2 == 0 {
                     send_ch.send(next_sample.into()).unwrap();
                 }
-                *sample = next_sample as f32 / 2.0_f32.powf(18.0);
+                *sample = next_sample as f32 / 2.0_f32.powf(16.0);
 
                 playback_idx += 1;
             }
@@ -90,18 +107,17 @@ fn main() {
     out_stream.play().unwrap();
 
     let mut sample_idx = 0;
-    let mut chunk = SharedRb::<Heap<i32>>::new(CHUNK_SIZE as usize);
+    let mut goertzeler = Goertzeler::new(coeffs);
     let mut last_digit = 0;
     while let Ok(sample) = rcv_ch.recv_timeout(Duration::from_millis(1000)) {
-        chunk.push_overwrite(sample);
+        goertzeler.push(sample as f64);
         if sample_idx >= CHUNK_SIZE && sample_idx % WINDOW_INTERVAL == 0 {
-            // TODO: Move this code into an "identify digit" function
-            let active_freqs: Vec<_> = coeffs
+            let active_freqs: Vec<_> = goertzeler.goertzel_me()
                 .iter()
-                .map(|c| goertzel_me(chunk.iter(), 0.0, 0.0, *c).0)
                 .enumerate()
-                .filter_map(|(idx, mag)| (mag > mag_threshold).then_some(idx))
+                .filter_map(|(idx, &mag)| (mag > mag_threshold).then_some(idx))
                 .collect();
+            // TODO: Move this code into an "identify digit" function
             if active_freqs.len() > 0 {
                 //dbg!(&active_freqs);
             }
@@ -113,6 +129,8 @@ fn main() {
                 dbg!(digit);
             }
             last_digit = digit;
+
+            goertzeler = Goertzeler::new(coeffs);
         }
 
         sample_idx += 1;
