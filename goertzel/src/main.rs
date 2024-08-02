@@ -5,7 +5,7 @@ use std::sync::mpsc::channel;
 use std::time::Duration;
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use cpal::Sample;
+use cpal::{Sample, SampleFormat, SupportedStreamConfig};
 use hound;
 use pico_args::Arguments;
 use ringbuf::storage::Heap;
@@ -53,13 +53,20 @@ fn main() {
     let supported_config = device
         .supported_output_configs()
         .unwrap()
-        .filter_map(|r| r.try_with_sample_rate(cpal::SampleRate(SAMPLE_FREQ)))
+        .map(|conf| dbg!(conf))
+        .filter_map(|r| {
+            if r.channels() == 2 && r.sample_format() == SampleFormat::F32 {
+                r.try_with_sample_rate(cpal::SampleRate(SAMPLE_FREQ))
+            } else {
+                None
+            }
+        })
         .next()
         .unwrap();
 
-    let mut reader = hound::WavReader::open(fname).unwrap();
+    let reader = hound::WavReader::open(fname).unwrap();
     // TODO: Use this as an iterator not a collected vec
-    let samples = reader.samples::<i32>().collect::<Result<Vec<_>, _>>().unwrap();
+    let mut samples = reader.into_samples::<i32>();
 
     let (send_ch, rcv_ch) = channel::<i32>();
     let mut playback_idx = 0;
@@ -67,14 +74,11 @@ fn main() {
         &supported_config.into(),
         move |data: &mut[f32], _: &cpal::OutputCallbackInfo| {
             for sample in data.iter_mut() {
-                // Only send the left channel into the send channel
-                if playback_idx < samples.len() && playback_idx % 2 == 0 {
-                    let next_sample = samples[playback_idx];
-                    send_ch.send(next_sample).unwrap();
-                    *sample = next_sample as f32;
-                } else {
-                    *sample = Sample::EQUILIBRIUM;
+                let next_sample = samples.next().unwrap().unwrap();
+                if playback_idx % 2 == 0 {
+                    send_ch.send(next_sample.into()).unwrap();
                 }
+                *sample = next_sample as f32 / 2.0_f32.powf(18.0);
 
                 playback_idx += 1;
             }
@@ -88,7 +92,7 @@ fn main() {
     let mut sample_idx = 0;
     let mut chunk = SharedRb::<Heap<i32>>::new(CHUNK_SIZE as usize);
     let mut last_digit = 0;
-    while let Ok(sample) = rcv_ch.recv_timeout(Duration::from_millis(100)) {
+    while let Ok(sample) = rcv_ch.recv_timeout(Duration::from_millis(1000)) {
         chunk.push_overwrite(sample);
         if sample_idx >= CHUNK_SIZE && sample_idx % WINDOW_INTERVAL == 0 {
             // TODO: Move this code into an "identify digit" function
@@ -98,6 +102,9 @@ fn main() {
                 .enumerate()
                 .filter_map(|(idx, mag)| (mag > mag_threshold).then_some(idx))
                 .collect();
+            if active_freqs.len() > 0 {
+                //dbg!(&active_freqs);
+            }
             let digit = match active_freqs[..] {
                 [f1, f2] if f2 > 3 => f1*3 + f2-3,
                 _ => 0,
