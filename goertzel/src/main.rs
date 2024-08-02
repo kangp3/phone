@@ -1,11 +1,9 @@
 use std::f64::consts;
-use std::iter::Chain;
-use std::slice::Iter;
 use std::sync::mpsc::channel;
 use std::time::Duration;
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use cpal::{Sample, SampleFormat, SupportedStreamConfig};
+use cpal::{Sample, SampleFormat};
 use hound;
 use pico_args::Arguments;
 use ringbuf::storage::Heap;
@@ -71,7 +69,6 @@ fn main() {
     let supported_config = device
         .supported_output_configs()
         .unwrap()
-        .map(|conf| dbg!(conf))
         .filter_map(|r| {
             if r.channels() == 2 && r.sample_format() == SampleFormat::F32 {
                 r.try_with_sample_rate(cpal::SampleRate(SAMPLE_FREQ))
@@ -91,7 +88,11 @@ fn main() {
         &supported_config.into(),
         move |data: &mut[f32], _: &cpal::OutputCallbackInfo| {
             for sample in data.iter_mut() {
-                let next_sample = samples.next().unwrap().unwrap();
+                let Some(next_sample) = samples.next() else {
+                    *sample = Sample::EQUILIBRIUM;
+                    continue;
+                };
+                let next_sample = next_sample.unwrap();
                 if playback_idx % 2 == 0 {
                     send_ch.send(next_sample.into()).unwrap();
                 }
@@ -109,7 +110,7 @@ fn main() {
     let mut sample_idx = 0;
     let mut goertzeler = Goertzeler::new(coeffs);
     let mut last_digit = 0;
-    while let Ok(sample) = rcv_ch.recv_timeout(Duration::from_millis(1000)) {
+    while let Ok(sample) = rcv_ch.recv_timeout(Duration::from_millis(100)) {
         goertzeler.push(sample as f64);
         if sample_idx >= CHUNK_SIZE && sample_idx % WINDOW_INTERVAL == 0 {
             let active_freqs: Vec<_> = goertzeler.goertzel_me()
