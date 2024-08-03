@@ -4,8 +4,7 @@ use std::time::Duration;
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{SampleFormat, SupportedStreamConfig};
-use hound;
-use pico_args::Arguments;
+use itertools::Itertools;
 use ringbuf::storage::Heap;
 use ringbuf::SharedRb;
 use ringbuf::traits::{RingBuffer, Consumer};
@@ -15,6 +14,7 @@ const WINDOW_INTERVAL: u32 = 1000;
 const CHUNK_SIZE: u32 = 2000;
 const SAMPLE_FREQ: u32 = 48000;
 const FREQS: [u32;7] = [697, 770, 852, 941, 1209, 1336, 1477];
+const THRESHOLD_MAG: f64 = 22.0;
 
 
 fn goertzel_coeff(target_freq: u32, sample_freq: u32) -> f64 {
@@ -58,11 +58,7 @@ impl Goertzeler {
 
 
 fn main() {
-    let mag_threshold = 26.5_f64.exp();
     let coeffs = FREQS.map(|f| goertzel_coeff(f, SAMPLE_FREQ));
-
-    let mut args = Arguments::from_env();
-    let fname = args.value_from_str::<_, String>("-f").unwrap();
 
     let host = cpal::default_host();
     let device = host.default_output_device().unwrap();
@@ -83,7 +79,6 @@ fn main() {
     let in_config: SupportedStreamConfig = in_device
         .supported_input_configs()
         .unwrap()
-        .map(|r| dbg!(r))
         .filter_map(|r| if r.channels() == 2 && r.sample_format() == SampleFormat::F32 {
             r.try_with_sample_rate(cpal::SampleRate(SAMPLE_FREQ))
         } else {
@@ -100,9 +95,6 @@ fn main() {
         move |_| { dbg!("Fuck error handling"); },
         None,
     ).unwrap();
-
-    let reader = hound::WavReader::open(fname).unwrap();
-    let mut samples = reader.into_samples::<i32>();
 
     let (send_ch, rcv_ch) = channel::<f32>();
     let mut playback_idx = 0;
@@ -129,27 +121,33 @@ fn main() {
 
     let mut sample_idx = 0;
     let mut goertzeler = Goertzeler::new(coeffs);
+    let mut two_digits_ago = 0;
     let mut last_digit = 0;
     while let Ok(sample) = rcv_ch.recv_timeout(Duration::from_millis(100)) {
         goertzeler.push(sample as f64);
         if sample_idx >= CHUNK_SIZE && sample_idx % WINDOW_INTERVAL == 0 {
-            let active_freqs: Vec<_> = goertzeler.goertzel_me()
-                .iter()
+            let sorted_mags: Vec<_> = goertzeler.goertzel_me()
+                .into_iter()
                 .enumerate()
-                .filter_map(|(idx, &mag)| (mag > mag_threshold).then_some(idx))
+                .sorted_by(|a, b| b.1.partial_cmp(&a.1).unwrap())
                 .collect();
-            if active_freqs.len() > 0 {
-                //dbg!(&active_freqs);
+            if sample_idx % 10000 == 0 {
+                dbg!(sorted_mags[1].1 / sorted_mags[2].1);
+                dbg!(sorted_mags[0].1.ln());
             }
-            // TODO: Move this code into an "identify digit" function
-            let digit = match active_freqs[..] {
-                [f1, f2] if f2 > 3 => f1*3 + f2-3,
-                _ => 0,
-            };
-            if digit != 0 && digit != last_digit {
-                dbg!(digit);
+            if sorted_mags[1].1 > sorted_mags[2].1 * THRESHOLD_MAG {
+                dbg!(&sorted_mags[0..2]);
+                // TODO: Move this code into an "identify digit" function
+                let digit = match sorted_mags[0..2] {
+                    [(f1, _), (f2, _)] if f2 > 3 => f1*3 + f2-3,
+                    _ => 0,
+                };
+                if digit != 0 && digit == last_digit && digit != two_digits_ago {
+                    dbg!(digit);
+                }
+                two_digits_ago = last_digit;
+                last_digit = digit;
             }
-            last_digit = digit;
 
             goertzeler = Goertzeler::new(coeffs);
         }
