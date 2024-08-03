@@ -3,7 +3,7 @@ use std::sync::mpsc::channel;
 use std::time::Duration;
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use cpal::{Sample, SampleFormat};
+use cpal::{SampleFormat, SupportedStreamConfig};
 use hound;
 use pico_args::Arguments;
 use ringbuf::storage::Heap;
@@ -12,7 +12,7 @@ use ringbuf::traits::{RingBuffer, Consumer};
 
 
 const WINDOW_INTERVAL: u32 = 1000;
-const CHUNK_SIZE: u32 = 1000;
+const CHUNK_SIZE: u32 = 2000;
 const SAMPLE_FREQ: u32 = 48000;
 const FREQS: [u32;7] = [697, 770, 852, 941, 1209, 1336, 1477];
 
@@ -58,7 +58,7 @@ impl Goertzeler {
 
 
 fn main() {
-    let mag_threshold = 27.5_f64.exp();
+    let mag_threshold = 26.5_f64.exp();
     let coeffs = FREQS.map(|f| goertzel_coeff(f, SAMPLE_FREQ));
 
     let mut args = Arguments::from_env();
@@ -79,32 +79,52 @@ fn main() {
         .next()
         .unwrap();
 
+    let in_device = host.default_input_device().unwrap();
+    let in_config: SupportedStreamConfig = in_device
+        .supported_input_configs()
+        .unwrap()
+        .map(|r| dbg!(r))
+        .filter_map(|r| if r.channels() == 2 && r.sample_format() == SampleFormat::F32 {
+            r.try_with_sample_rate(cpal::SampleRate(SAMPLE_FREQ))
+        } else {
+            None
+        }).next().unwrap();
+    let (send_input_ch, rcv_input_ch) = channel::<f32>();
+    let in_stream = in_device.build_input_stream(
+        &in_config.into(),
+        move |data: &[f32], _: &cpal::InputCallbackInfo| {
+            for sample in data.iter() {
+                send_input_ch.send(*sample).unwrap();
+            }
+        },
+        move |_| { dbg!("Fuck error handling"); },
+        None,
+    ).unwrap();
+
     let reader = hound::WavReader::open(fname).unwrap();
     let mut samples = reader.into_samples::<i32>();
 
-    let (send_ch, rcv_ch) = channel::<i32>();
+    let (send_ch, rcv_ch) = channel::<f32>();
     let mut playback_idx = 0;
     let out_stream = device.build_output_stream(
         &supported_config.into(),
         move |data: &mut[f32], _: &cpal::OutputCallbackInfo| {
             for sample in data.iter_mut() {
-                let Some(next_sample) = samples.next() else {
-                    *sample = Sample::EQUILIBRIUM;
-                    continue;
-                };
-                let next_sample = next_sample.unwrap();
+                let next_sample = rcv_input_ch.recv().unwrap();
+                //dbg!(next_sample);
                 if playback_idx % 2 == 0 {
-                    send_ch.send(next_sample.into()).unwrap();
+                    send_ch.send(next_sample * 2.0_f32.powf(16.0)).unwrap();
                 }
-                *sample = next_sample as f32 / 2.0_f32.powf(16.0);
+                *sample = next_sample as f32; // / 2.0_f32.powf(16.0);
 
                 playback_idx += 1;
             }
         },
         move |_| { dbg!("Fuck error handling"); },
-        None
+        None,
     ).unwrap();
 
+    in_stream.play().unwrap();
     out_stream.play().unwrap();
 
     let mut sample_idx = 0;
@@ -118,6 +138,9 @@ fn main() {
                 .enumerate()
                 .filter_map(|(idx, &mag)| (mag > mag_threshold).then_some(idx))
                 .collect();
+            if active_freqs.len() > 0 {
+                //dbg!(&active_freqs);
+            }
             // TODO: Move this code into an "identify digit" function
             let digit = match active_freqs[..] {
                 [f1, f2] if f2 > 3 => f1*3 + f2-3,
