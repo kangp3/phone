@@ -119,9 +119,6 @@ fn main() {
                 .filter_map(|(idx, &mag)| (mag > mag_threshold).then_some(idx))
                 .collect();
             // TODO: Move this code into an "identify digit" function
-            if active_freqs.len() > 0 {
-                //dbg!(&active_freqs);
-            }
             let digit = match active_freqs[..] {
                 [f1, f2] if f2 > 3 => f1*3 + f2-3,
                 _ => 0,
