@@ -12,7 +12,8 @@ use ringbuf::SharedRb;
 use ringbuf::traits::{RingBuffer, Consumer};
 
 
-const CHUNK_SIZE: u32 = 1200;
+const WINDOW_INTERVAL: u32 = 2000;
+const CHUNK_SIZE: u32 = 2000;
 const SAMPLE_FREQ: u32 = 48000;
 const FREQS: [u32;7] = [697, 770, 852, 941, 1209, 1336, 1477];
 const THRESHOLD_MAG: f64 = 50.0;
@@ -146,22 +147,24 @@ fn main() {
 
     let mut sample_idx = 0;
     let mut goertzel_idx = 0;
-    let mut goertzeler = Goertzeler::new(gz_coeffs, ham_coeffs.iter());
+    let mut goertzelers: Vec<_> = (0..(CHUNK_SIZE / WINDOW_INTERVAL))
+        .into_iter()
+        .map(|_| Goertzeler::new(gz_coeffs, ham_coeffs.iter()))
+        .collect();
     let mut last_digit = 0;
     while let Ok(sample) = rcv_ch.recv_timeout(Duration::from_millis(100)) {
-        if sample_idx % CHUNK_SIZE == 0 {
+        if sample_idx == WINDOW_INTERVAL {
+            let goertzeler = &goertzelers[goertzel_idx];
             let sorted_mags: Vec<_> = goertzeler.goertzel_me()
                 .into_iter()
                 .enumerate()
                 .sorted_by(|a, b| b.1.partial_cmp(&a.1).unwrap())
                 .collect();
             let bg_sum = sorted_mags[2..].iter().map(|(_, mag)| mag).sum::<f64>();
-            if goertzel_idx % 2 == 0 {
-                dbg!(sorted_mags[1].1 / bg_sum);
+            if goertzel_idx % 10 == 0 {
+                //dbg!(sorted_mags[1].1 / bg_sum);
             }
             let digit = match sorted_mags[0..2] {
-                // Irritatingly, 4 5 6 are only ~3.4x threshold and 7 8 9 are only ~7x threshold
-                // And 5x threshold is well-within noise range it seems :(
                 _ if sorted_mags[1].1 < bg_sum * THRESHOLD_MAG => 0,
                 [(f1, _), (f2, _)] if f2 > 3 && f1 < 4 => f1*3 + f2-3,
                 [(f1, _), (f2, _)] if f1 > 3 && f2 < 4 => f2*3 + f1-3,
@@ -172,11 +175,17 @@ fn main() {
             }
             last_digit = digit;
 
-            goertzeler = Goertzeler::new(gz_coeffs, ham_coeffs.iter());
+            goertzelers[goertzel_idx] = Goertzeler::new(gz_coeffs, ham_coeffs.iter());
 
             goertzel_idx += 1;
+            if goertzel_idx == goertzelers.len() {
+                goertzel_idx = 0;
+            }
+            sample_idx = 0;
         }
-        goertzeler.push(sample as f64);
+        for goertzeler in goertzelers.iter_mut() {
+            goertzeler.push(sample as f64);
+        }
 
         sample_idx += 1;
     }
