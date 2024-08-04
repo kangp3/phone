@@ -6,6 +6,7 @@ use std::time::Duration;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{SampleFormat, SupportedStreamConfig};
 use itertools::Itertools;
+use pico_args::Arguments;
 use ringbuf::storage::Heap;
 use ringbuf::SharedRb;
 use ringbuf::traits::{RingBuffer, Consumer};
@@ -66,7 +67,48 @@ fn main() {
         .map(|n| 0.54 - 0.46* (2.0*PI*(n as f64)/((CHUNK_SIZE-1) as f64)).cos())
         .collect();
 
+    let mut args = Arguments::from_env();
+    let fname: Option<String> = args.opt_value_from_str("-f").unwrap();
+
+    let (send_input_ch, rcv_input_ch) = channel::<f32>();
+    let in_stream;
+
     let host = cpal::default_host();
+    if let Some(fname) = fname {
+        // Get input from file
+        let reader = hound::WavReader::open(fname).unwrap();
+        let reader_bits = reader.spec().bits_per_sample;
+        let samples = reader.into_samples::<i32>();
+        for s in samples {
+            match s {
+                Ok(s) => send_input_ch.send(s as f32/2.0f32.powi(reader_bits.into())).unwrap(),
+                Err(_) => break,
+            }
+        }
+    } else {
+        // Get input from mic
+        let in_device = host.default_input_device().unwrap();
+        let in_config: SupportedStreamConfig = in_device
+            .supported_input_configs()
+            .unwrap()
+            .filter_map(|r| if r.channels() == 2 && r.sample_format() == SampleFormat::F32 {
+                r.try_with_sample_rate(cpal::SampleRate(SAMPLE_FREQ))
+            } else {
+                None
+            }).next().unwrap();
+        in_stream = in_device.build_input_stream(
+            &in_config.into(),
+            move |data: &[f32], _: &cpal::InputCallbackInfo| {
+                for sample in data.iter() {
+                    send_input_ch.send(*sample).unwrap();
+                }
+            },
+            move |_| { dbg!("Fuck error handling"); },
+            None,
+        ).unwrap();
+        in_stream.play().unwrap();
+    }
+
     let device = host.default_output_device().unwrap();
     let supported_config = device
         .supported_output_configs()
@@ -81,27 +123,6 @@ fn main() {
         .next()
         .unwrap();
 
-    let in_device = host.default_input_device().unwrap();
-    let in_config: SupportedStreamConfig = in_device
-        .supported_input_configs()
-        .unwrap()
-        .filter_map(|r| if r.channels() == 2 && r.sample_format() == SampleFormat::F32 {
-            r.try_with_sample_rate(cpal::SampleRate(SAMPLE_FREQ))
-        } else {
-            None
-        }).next().unwrap();
-    let (send_input_ch, rcv_input_ch) = channel::<f32>();
-    let in_stream = in_device.build_input_stream(
-        &in_config.into(),
-        move |data: &[f32], _: &cpal::InputCallbackInfo| {
-            for sample in data.iter() {
-                send_input_ch.send(*sample).unwrap();
-            }
-        },
-        move |_| { dbg!("Fuck error handling"); },
-        None,
-    ).unwrap();
-
     let (send_ch, rcv_ch) = channel::<f32>();
     let mut playback_idx = 0;
     let out_stream = device.build_output_stream(
@@ -109,11 +130,10 @@ fn main() {
         move |data: &mut[f32], _: &cpal::OutputCallbackInfo| {
             for sample in data.iter_mut() {
                 let next_sample = rcv_input_ch.recv().unwrap();
-                //dbg!(next_sample);
                 if playback_idx % 2 == 0 {
                     send_ch.send(next_sample * 2.0_f32.powf(16.0)).unwrap();
                 }
-                *sample = next_sample as f32; // / 2.0_f32.powf(16.0);
+                *sample = next_sample as f32;
 
                 playback_idx += 1;
             }
@@ -122,7 +142,6 @@ fn main() {
         None,
     ).unwrap();
 
-    in_stream.play().unwrap();
     out_stream.play().unwrap();
 
     let mut sample_idx = 0;
