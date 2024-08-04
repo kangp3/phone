@@ -12,10 +12,10 @@ use ringbuf::SharedRb;
 use ringbuf::traits::{RingBuffer, Consumer};
 
 
-const CHUNK_SIZE: u32 = 1000;
+const CHUNK_SIZE: u32 = 1200;
 const SAMPLE_FREQ: u32 = 48000;
 const FREQS: [u32;7] = [697, 770, 852, 941, 1209, 1336, 1477];
-const THRESHOLD_MAG: f64 = 3.0;
+const THRESHOLD_MAG: f64 = 50.0;
 
 
 fn goertzel_coeff(target_freq: u32, sample_freq: u32) -> f64 {
@@ -145,8 +145,8 @@ fn main() {
     out_stream.play().unwrap();
 
     let mut sample_idx = 0;
+    let mut goertzel_idx = 0;
     let mut goertzeler = Goertzeler::new(gz_coeffs, ham_coeffs.iter());
-    let mut two_digits_ago = 0;
     let mut last_digit = 0;
     while let Ok(sample) = rcv_ch.recv_timeout(Duration::from_millis(100)) {
         if sample_idx % CHUNK_SIZE == 0 {
@@ -155,25 +155,31 @@ fn main() {
                 .enumerate()
                 .sorted_by(|a, b| b.1.partial_cmp(&a.1).unwrap())
                 .collect();
-            if sample_idx % 10000 == 0 {
-                dbg!(sorted_mags[1].1 / sorted_mags[2].1);
+            let bg_sum = sorted_mags[2..].iter().map(|(_, mag)| mag).sum::<f64>();
+            if goertzel_idx % 2 == 0 {
+                dbg!(sorted_mags[1].1 / bg_sum);
             }
             let digit = match sorted_mags[0..2] {
-                _ if sorted_mags[1].1 < sorted_mags[2].1 * THRESHOLD_MAG => 0,
+                // Irritatingly, 4 5 6 are only ~3.4x threshold and 7 8 9 are only ~7x threshold
+                // And 5x threshold is well-within noise range it seems :(
+                _ if sorted_mags[1].1 < bg_sum * THRESHOLD_MAG => 0,
                 [(f1, _), (f2, _)] if f2 > 3 && f1 < 4 => f1*3 + f2-3,
                 [(f1, _), (f2, _)] if f1 > 3 && f2 < 4 => f2*3 + f1-3,
                 _ => 0,
             };
-            if digit != 0 && digit == last_digit && digit != two_digits_ago {
+            if digit != 0 && digit != last_digit {
                 dbg!(digit);
             }
-            two_digits_ago = last_digit;
             last_digit = digit;
 
             goertzeler = Goertzeler::new(gz_coeffs, ham_coeffs.iter());
+
+            goertzel_idx += 1;
         }
         goertzeler.push(sample as f64);
 
         sample_idx += 1;
     }
+    // Why doesn't this exit?
+    // dbg!("DONE?");
 }
