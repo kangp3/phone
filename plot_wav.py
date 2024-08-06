@@ -25,7 +25,23 @@ def plot_wav_samples(wav_file, outfile):
         for i in range(0, len(frames), 4):
             offset = 9 if i % 8 == 0 else 1
             shifted = ((frames[i+3] << 24) + (frames[i+2] << 16) + (frames[i+1] << 8) + (frames[i])) >> offset
-            shifted_frames.append(twos_comp(shifted, 16))
+            #if shifted > 65536 and i % 8 == 0:
+            #    other_shifted = ((frames[i+3] << 24) + (frames[i+2] << 16) + (frames[i+1] << 8) + (frames[i])) >> offset
+            #    for j in range(-5,  0):
+            #        idx = i+4*j
+            #        print(i // 4 + j, f"{frames[idx]:02x} {frames[idx+1]:02x} {frames[idx+2]:02x} {frames[idx+3]:02x}")
+            #    print(i // 4, f"{frames[i]:02x} {frames[i+1]:02x} {frames[i+2]:02x} {frames[i+3]:02x}", twos_comp(shifted, 24))
+            #    for j in range(1, 6):
+            #        idx = i+4*j
+            #        print(i // 4 + j, f"{frames[idx]:02x} {frames[idx+1]:02x} {frames[idx+2]:02x} {frames[idx+3]:02x}")
+            #    print()
+            #if 46358 <= i // 8 <= 46374:
+            #    val = shifted & 0xffff
+            #    print(i // 8, f"{frames[i+3]:08b} {frames[i+2]:08b} {frames[i+1]:08b} {frames[i]:08b}", twos_comp(val, 16))
+            #    print(i // 8, f"{(val >> 24) & 0xff:08b} {(val >> 16) & 0xff:08b} {(val >> 8) & 0xff:08b} {val & 0xff:08b}")
+            #    print()
+            shifted_frames.append(twos_comp(shifted & 0x7fff, 15))
+            #shifted_frames.append(twos_comp(shifted, 16))
 
         # Convert frames to numpy array
         if sample_width == 3:
@@ -43,7 +59,7 @@ def plot_wav_samples(wav_file, outfile):
         reshaped = samples.reshape(-1, n_channels)
 
         # Extract left channel
-        left_channel = reshaped[:, 1]
+        left_channel = reshaped[:, 0]
 
         # Plot samples
         time = np.linspace(0, len(left_channel), num=len(left_channel))

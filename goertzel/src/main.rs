@@ -1,22 +1,22 @@
-use std::f64::consts;
-use std::iter::Chain;
+use std::f64::consts::{self, PI};
 use std::slice::Iter;
 use std::sync::mpsc::channel;
 use std::time::Duration;
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use cpal::Sample;
-use hound;
+use cpal::{SampleFormat, SupportedStreamConfig};
+use itertools::Itertools;
+use pico_args::Arguments;
 use ringbuf::storage::Heap;
 use ringbuf::SharedRb;
 use ringbuf::traits::{RingBuffer, Consumer};
 
 
-const FNAME: &str = "cortelco_48k.wav";
 const WINDOW_INTERVAL: u32 = 1000;
-const CHUNK_SIZE: u32 = 3000;
+const CHUNK_SIZE: u32 = 2000;
 const SAMPLE_FREQ: u32 = 48000;
 const FREQS: [u32;7] = [697, 770, 852, 941, 1209, 1336, 1477];
+const THRESHOLD_MAG: f64 = 50.0;
 
 
 fn goertzel_coeff(target_freq: u32, sample_freq: u32) -> f64 {
@@ -28,94 +28,167 @@ fn goertzel_coeff(target_freq: u32, sample_freq: u32) -> f64 {
 }
 
 
-// TODO: Struct this with ring buffers?
-fn goertzel_me(samples: Chain<Iter<i32>, Iter<i32>>, mut q1: f64, mut q2: f64, coeff: f64) -> (f64, f64, f64, f64) {
-    let mut q0: f64 = 0.0;
-    for sample in samples {
-        let sample: f64 = (*sample).try_into().unwrap();
-        q0 = coeff * q1 - q2 + sample;
-        q2 = q1;
-        q1 = q0;
+struct Goertzeler<'a> {
+    ham_coeffs: Iter<'a, f64>,
+    ariana_goertzde: [(f64, SharedRb::<Heap<f64>>);7],
+}
+
+impl<'a> Goertzeler<'a> {
+    fn new(coeffs: [f64;7], ham_coeffs: Iter<'a, f64>) -> Self {
+        Self {
+            ham_coeffs,
+            ariana_goertzde: coeffs.map(|c| (c, SharedRb::<Heap<f64>>::new(2))),
+        }
     }
-    return (q1*q1 + q2*q2 - q1*q2*coeff, q0, q1, q2);
+
+    fn push(self: &mut Self, sample: f64) {
+        let ham_c = self.ham_coeffs.next().unwrap();
+        for (coeff, ring) in &mut self.ariana_goertzde {
+            let mut riter = ring.iter();
+            let q2 = *riter.next().unwrap_or(&0.0);
+            let q1 = *riter.next().unwrap_or(&0.0);
+            ring.push_overwrite(*coeff * q1 - q2 + sample*ham_c);
+        }
+    }
+
+    fn goertzel_me(self: &Self) -> Vec<f64> {
+        self.ariana_goertzde.iter().map(|(coeff, ring)| {
+            let mut riter = ring.iter();
+            let q2 = *riter.next().unwrap_or(&0.0);
+            let q1 = *riter.next().unwrap_or(&0.0);
+            q1*q1 + q2*q2 - q1*q2*coeff
+        }).collect()
+    }
 }
 
 
 fn main() {
-    let mag_threshold = 42.5_f64.exp();
-    let coeffs = FREQS.map(|f| goertzel_coeff(f, SAMPLE_FREQ));
+    let gz_coeffs = FREQS.map(|f| goertzel_coeff(f, SAMPLE_FREQ));
+    let ham_coeffs: Vec<_> = (0..CHUNK_SIZE)
+        .map(|n| 0.54 - 0.46* (2.0*PI*(n as f64)/((CHUNK_SIZE-1) as f64)).cos())
+        .collect();
+
+    let mut args = Arguments::from_env();
+    let fname: Option<String> = args.opt_value_from_str("-f").unwrap();
+
+    let (send_input_ch, rcv_input_ch) = channel::<f32>();
+    let in_stream;
 
     let host = cpal::default_host();
+    if let Some(fname) = fname {
+        // Get input from file
+        let reader = hound::WavReader::open(fname).unwrap();
+        let reader_bits = reader.spec().bits_per_sample;
+        let samples = reader.into_samples::<i32>();
+        for s in samples {
+            match s {
+                Ok(s) => send_input_ch.send(s as f32/2.0f32.powi(reader_bits.into())).unwrap(),
+                Err(_) => break,
+            }
+        }
+    } else {
+        // Get input from mic
+        let in_device = host.default_input_device().unwrap();
+        let in_config: SupportedStreamConfig = in_device
+            .supported_input_configs()
+            .unwrap()
+            .filter_map(|r| if r.channels() == 2 && r.sample_format() == SampleFormat::F32 {
+                r.try_with_sample_rate(cpal::SampleRate(SAMPLE_FREQ))
+            } else {
+                None
+            }).next().unwrap();
+        in_stream = in_device.build_input_stream(
+            &in_config.into(),
+            move |data: &[f32], _: &cpal::InputCallbackInfo| {
+                for sample in data.iter() {
+                    send_input_ch.send(*sample).unwrap();
+                }
+            },
+            move |_| { dbg!("Fuck error handling"); },
+            None,
+        ).unwrap();
+        in_stream.play().unwrap();
+    }
+
     let device = host.default_output_device().unwrap();
     let supported_config = device
         .supported_output_configs()
         .unwrap()
-        .filter_map(|r| r.try_with_sample_rate(cpal::SampleRate(SAMPLE_FREQ)))
+        .filter_map(|r| {
+            if r.channels() == 2 && r.sample_format() == SampleFormat::F32 {
+                r.try_with_sample_rate(cpal::SampleRate(SAMPLE_FREQ))
+            } else {
+                None
+            }
+        })
         .next()
         .unwrap();
 
-    let mut reader = hound::WavReader::open(FNAME).unwrap();
-    // TODO: Use this as an iterator not a collected vec
-    let samples = reader.samples::<i32>().collect::<Result<Vec<_>, _>>().unwrap();
-
-    let (send_ch, rcv_ch) = channel::<i32>();
+    let (send_ch, rcv_ch) = channel::<f32>();
     let mut playback_idx = 0;
     let out_stream = device.build_output_stream(
         &supported_config.into(),
         move |data: &mut[f32], _: &cpal::OutputCallbackInfo| {
             for sample in data.iter_mut() {
-                // Only send the left channel into the send channel
-                if playback_idx < samples.len() && playback_idx % 2 == 0 {
-                    let next_sample = samples[playback_idx];
-                    send_ch.send(next_sample).unwrap();
-                    *sample = next_sample as f32;
-                } else {
-                    *sample = Sample::EQUILIBRIUM;
+                let next_sample = rcv_input_ch.recv().unwrap();
+                if playback_idx % 2 == 0 {
+                    send_ch.send(next_sample * 2.0_f32.powf(16.0)).unwrap();
                 }
+                *sample = next_sample as f32;
 
                 playback_idx += 1;
             }
         },
         move |_| { dbg!("Fuck error handling 😮"); },
-        None
+        None,
     ).unwrap();
 
     out_stream.play().unwrap();
 
     let mut sample_idx = 0;
-    let mut chunk = SharedRb::<Heap<i32>>::new(CHUNK_SIZE as usize);
+    let mut goertzel_idx = 0;
+    let mut goertzelers: Vec<_> = (0..(CHUNK_SIZE / WINDOW_INTERVAL))
+        .into_iter()
+        .map(|_| Goertzeler::new(gz_coeffs, ham_coeffs.iter()))
+        .collect();
     let mut last_digit = 0;
     while let Ok(sample) = rcv_ch.recv_timeout(Duration::from_millis(100)) {
-        chunk.push_overwrite(sample);
-        if sample_idx >= CHUNK_SIZE && sample_idx % WINDOW_INTERVAL == 0 {
-            // TODO: Move this code into an "identify digit" function
-            let active_freqs: Vec<_> = coeffs
-                .iter()
-                .map(|c| goertzel_me(chunk.iter(), 0.0, 0.0, *c).0)
+        if sample_idx == WINDOW_INTERVAL {
+            let goertzeler = &goertzelers[goertzel_idx];
+            let sorted_mags: Vec<_> = goertzeler.goertzel_me()
+                .into_iter()
                 .enumerate()
-                .filter_map(|(idx, mag)| (mag > mag_threshold).then_some(idx))
+                .sorted_by(|a, b| b.1.partial_cmp(&a.1).unwrap())
                 .collect();
-            let digit = match active_freqs[..] {
-                [0, 4] => 1,
-                [0, 5] => 2,
-                [0, 6] => 3,
-                [1, 4] => 4,
-                [1, 5] => 5,
-                [1, 6] => 6,
-                [2, 4] => 7,
-                [2, 5] => 8,
-                [2, 6] => 9,
-                [3, 4] => 10,
-                [3, 5] => 11,
-                [3, 6] => 12,
+            let bg_sum = sorted_mags[2..].iter().map(|(_, mag)| mag).sum::<f64>();
+            if goertzel_idx % 10 == 0 {
+                //dbg!(sorted_mags[1].1 / bg_sum);
+            }
+            let digit = match sorted_mags[0..2] {
+                _ if sorted_mags[1].1 < bg_sum * THRESHOLD_MAG => 0,
+                [(f1, _), (f2, _)] if f2 > 3 && f1 < 4 => f1*3 + f2-3,
+                [(f1, _), (f2, _)] if f1 > 3 && f2 < 4 => f2*3 + f1-3,
                 _ => 0,
             };
             if digit != 0 && digit != last_digit {
                 dbg!(digit);
             }
             last_digit = digit;
+
+            goertzelers[goertzel_idx] = Goertzeler::new(gz_coeffs, ham_coeffs.iter());
+
+            goertzel_idx += 1;
+            if goertzel_idx == goertzelers.len() {
+                goertzel_idx = 0;
+            }
+            sample_idx = 0;
+        }
+        for goertzeler in goertzelers.iter_mut() {
+            goertzeler.push(sample as f64);
         }
 
         sample_idx += 1;
     }
+    // Why doesn't this exit?
+    // dbg!("DONE?");
 }

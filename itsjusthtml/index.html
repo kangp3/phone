@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>Phreak My Wi-Fi</title>
+</head>
+<body>
+    <form id="phorm">
+        <label for="ssid" type="text">SSID:</label>
+        <input id="ssid" type="text" /><br /><br />
+        <label for="pass" type="text">Password:</label>
+        <input id="pass" type="text"><br /><br />
+        <input type="submit" value="Phreak Me" />
+    </form>
+    <script>
+        const TEXT_MAPPING = [
+          [],
+          [],
+          ["a", "b", "c"],
+          ["d", "e", "f"],
+          ["g", "h", "i"],
+          ["j", "k", "l"],
+          ["m", "n", "o"],
+          ["p", "q", "r", "s"],
+          ["t", "u", "v"],
+          ["w", "x", "y", "z"],
+        ];
+        const SYM_MAPPING = [
+          [],
+          [" "],
+          ["!", "@", "#", "$"],
+          ["%", "^", "&", "*"],
+          ["(", ")", "`", "~"],
+          ["[", "]", "{", "}"],
+          ["/", "\\", "?", "|"],
+          ["'", "\"", ";", ":"],
+          [",", ".", "<", ">"],
+          ["-", "_", "=", "+"],
+        ];
+        const DTMF_END = "#";
+        const DTMF_ENCODINGS = {};
+        TEXT_MAPPING.forEach((cs, i) => {
+          cs.forEach((c, j) => DTMF_ENCODINGS[c] = new Array(j+1).fill(i));
+        });
+        TEXT_MAPPING.forEach((cs, i) => {
+          cs.forEach((c, j) => DTMF_ENCODINGS[c.toUpperCase()] = [0].concat(new Array(j+1).fill(i)));
+        });
+        SYM_MAPPING.forEach((cs, i) => {
+          cs.forEach((c, j) => DTMF_ENCODINGS[c] = [0, 0].concat(new Array(j+1).fill(i)));
+        });
+        [...Array(10).keys()].forEach((c) => DTMF_ENCODINGS[c] = [0, 0, 0, c]);
+    </script>
+    <script>
+        const DTMF_LOW_TONES = [697, 770, 852];
+        const DTMF_HIGH_TONES = [1209, 1336, 1477];
+        const DTMF_TONE_MAPPING = [];
+        DTMF_TONE_MAPPING.push([941, 1336]);
+        DTMF_LOW_TONES.forEach((l) => DTMF_HIGH_TONES.forEach((h) => DTMF_TONE_MAPPING.push([l, h])));
+    </script>
+    <script>
+        const ON = 0.1;
+        const OFF = 0;
+
+        const form = document.getElementById("phorm");
+        let ctx, vol, osc1, osc2;
+
+        let started = false;
+        form.onsubmit = (e) => {
+          e.preventDefault();
+
+          if (!started) {
+            ctx = new (window.AudioContext || window.webkitAudioContext)();
+
+            vol = ctx.createGain();
+            vol.gain.value = OFF;
+            vol.connect(ctx.destination);
+
+            osc1 = ctx.createOscillator();
+            osc2 = ctx.createOscillator();
+            osc1.connect(vol);
+            osc2.connect(vol);
+
+            osc1.start();
+            osc2.start();
+
+            started = true;
+          }
+
+          const ssid = document.getElementById("ssid").value;
+          const pass = document.getElementById("pass").value;
+
+          let t = ctx.currentTime + 0.05;
+          const encoding = ssid.split("").map((c) => DTMF_ENCODINGS[c]).flat();
+          console.log(encoding);
+          encoding.forEach((dig) => {
+            const [f1, f2] = DTMF_TONE_MAPPING[dig];
+            osc1.frequency.setValueAtTime(f1, t);
+            osc2.frequency.setValueAtTime(f2, t);
+            vol.gain.setTargetAtTime(ON, t, 0.005);
+            t += 0.07;
+            vol.gain.setTargetAtTime(OFF, t, 0.005);
+            t += 0.07;
+          });
+        };
+    </script>
+</body>
+</html>
