@@ -26,8 +26,8 @@
           ["w", "x", "y", "z"],
         ];
         const SYM_MAPPING = [
-          [],
           [" "],
+          [],
           ["!", "@", "#", "$"],
           ["%", "^", "&", "*"],
           ["(", ")", "`", "~"],
@@ -37,18 +37,19 @@
           [",", ".", "<", ">"],
           ["-", "_", "=", "+"],
         ];
-        const DTMF_END = "#";
+        const DTMF_NEXT = "#";
+        const DTMF_END = "0";
         const DTMF_ENCODINGS = {};
         TEXT_MAPPING.forEach((cs, i) => {
           cs.forEach((c, j) => DTMF_ENCODINGS[c] = new Array(j+1).fill(i));
         });
         TEXT_MAPPING.forEach((cs, i) => {
-          cs.forEach((c, j) => DTMF_ENCODINGS[c.toUpperCase()] = [0].concat(new Array(j+1).fill(i)));
+          cs.forEach((c, j) => DTMF_ENCODINGS[c.toUpperCase()] = [1].concat(new Array(j+1).fill(i)));
         });
         SYM_MAPPING.forEach((cs, i) => {
-          cs.forEach((c, j) => DTMF_ENCODINGS[c] = [0, 0].concat(new Array(j+1).fill(i)));
+          cs.forEach((c, j) => DTMF_ENCODINGS[c] = [1, 1].concat(new Array(j+1).fill(i)));
         });
-        [...Array(10).keys()].forEach((c) => DTMF_ENCODINGS[c] = [0, 0, 0, c]);
+        [...Array(10).keys()].forEach((c) => DTMF_ENCODINGS[c] = [1, 1, 1, c]);
     </script>
     <script>
         const DTMF_LOW_TONES = [697, 770, 852];
