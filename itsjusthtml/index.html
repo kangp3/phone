@@ -6,10 +6,10 @@
 </head>
 <body>
     <form id="phorm">
-        <label for="ssid" type="text">SSID:</label>
+        <label for="ssid">SSID:</label>
         <input id="ssid" type="text" /><br /><br />
-        <label for="pass" type="text">Password:</label>
-        <input id="pass" type="text"><br /><br />
+        <label for="pass">Password:</label>
+        <input id="pass" type="password"><br /><br />
         <input type="submit" value="Phreak Me" />
     </form>
     <script>
@@ -91,8 +91,9 @@
           const pass = document.getElementById("pass").value;
 
           let t = ctx.currentTime + 0.05;
-          const encoding = ssid.split("").map((c) => DTMF_ENCODINGS[c]).flat();
-          console.log(encoding);
+          const ssid_enc = ssid.split("").map((c) => DTMF_ENCODINGS[c]).flat();
+          const pass_enc = pass.split("").map((c) => DTMF_ENCODINGS[c]).flat();
+          const encoding = ssid_enc.concat([DTMF_END]).concat(pass_enc).concat([DTMF_END]);
           encoding.forEach((dig) => {
             const [f1, f2] = DTMF_TONE_MAPPING[dig];
             osc1.frequency.setValueAtTime(f1, t);
