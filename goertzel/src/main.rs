@@ -12,7 +12,7 @@ use ringbuf::SharedRb;
 use ringbuf::traits::{RingBuffer, Consumer};
 
 
-const WINDOW_INTERVAL: u32 = 2000;
+const WINDOW_INTERVAL: u32 = 1000;
 const CHUNK_SIZE: u32 = 2000;
 const SAMPLE_FREQ: u32 = 48000;
 const FREQS: [u32;7] = [697, 770, 852, 941, 1209, 1336, 1477];
