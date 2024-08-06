@@ -4,7 +4,7 @@ use std::sync::mpsc::channel;
 use std::time::Duration;
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use cpal::{SampleFormat, SupportedStreamConfig};
+use cpal::{BufferSize, SampleFormat, SupportedStreamConfig};
 use itertools::Itertools;
 use pico_args::Arguments;
 use ringbuf::storage::Heap;
@@ -75,6 +75,12 @@ fn main() {
     let in_stream;
 
     let host = cpal::default_host();
+    for device in cpal::default_host().output_devices().unwrap() {
+        println!("Found output device {}", device.name().unwrap());
+    }
+    for device in cpal::default_host().input_devices().unwrap() {
+        println!("Found input device {}", device.name().unwrap());
+    }
     if let Some(fname) = fname {
         // Get input from file
         let reader = hound::WavReader::open(fname).unwrap();
@@ -89,16 +95,22 @@ fn main() {
     } else {
         // Get input from mic
         let in_device = host.default_input_device().unwrap();
+        println!("Found default in {}", in_device.name().unwrap());
         let in_config: SupportedStreamConfig = in_device
             .supported_input_configs()
             .unwrap()
-            .filter_map(|r| if r.channels() == 2 && r.sample_format() == SampleFormat::F32 {
+            .map(|r| dbg!(r))
+            .filter_map(|r| if r.channels() == 2 && r.sample_format() == SampleFormat::I16 {
                 r.try_with_sample_rate(cpal::SampleRate(SAMPLE_FREQ))
             } else {
                 None
             }).next().unwrap();
+        let mut cfg = in_config.config();
+        cfg.buffer_size = BufferSize::Fixed(8192);
+        println!("Chosen in put config is {:?}", cfg);
+        hello_test(&in_device, &cfg);
         in_stream = in_device.build_input_stream(
-            &in_config.into(),
+            &cfg,
             move |data: &[f32], _: &cpal::InputCallbackInfo| {
                 for sample in data.iter() {
                     send_input_ch.send(*sample).unwrap();
@@ -191,4 +203,15 @@ fn main() {
     }
     // Why doesn't this exit?
     // dbg!("DONE?");
+}
+
+#[no_mangle]
+pub fn hello_test(in_device: &cpal::Device, cfg: &cpal::StreamConfig) {
+    in_device.build_input_stream(
+        cfg,
+        move |data: &[f32], _: &cpal::InputCallbackInfo| {
+        },
+        move |_| { dbg!("Fuck error handling"); },
+        None,
+    ).unwrap();
 }
