@@ -27,7 +27,7 @@ jobs:
       id: upload-artifact
       uses: actions/upload-pages-artifact@v3
       with:
-        path: artifact
+        path: itsjusthtml
     - name: Deploy this sucker
       id: deployment
       uses: actions/deploy-pages@v4
