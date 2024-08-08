@@ -79,10 +79,10 @@ fn main() {
         // Get input from file
         let reader = hound::WavReader::open(fname).unwrap();
         let reader_bits = reader.spec().bits_per_sample;
-        let samples = reader.into_samples::<i32>();
+        let samples = reader.into_samples::<f32>();
         for s in samples {
             match s {
-                Ok(s) => send_input_ch.send(s as f32/2.0f32.powi(reader_bits.into())).unwrap(),
+                Ok(s) => send_input_ch.send(s/2.0f32.powi(reader_bits.into())).unwrap(),
                 Err(_) => break,
             }
         }
@@ -102,7 +102,7 @@ fn main() {
             &in_config.into(),
             move |data: &[f32], _: &cpal::InputCallbackInfo| {
                 for sample in data.iter() {
-                    send_input_ch.send(*sample as f32).unwrap();
+                    send_input_ch.send(*sample).unwrap();
                 }
             },
             move |_| { dbg!("Fuck error handling"); },
@@ -135,7 +135,7 @@ fn main() {
                 if playback_idx % 2 == 0 {
                     send_ch.send(next_sample * 2.0_f32.powf(16.0)).unwrap();
                 }
-                *sample = next_sample as f32;
+                *sample = next_sample;
 
                 playback_idx += 1;
             }
