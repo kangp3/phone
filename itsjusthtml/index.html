@@ -6,46 +6,43 @@
     <title>Phreak My Wi-Fi</title>
     <style>
       * {
-        border-box: border-box;
         -moz-box-sizing: border-box;
         -webkit-box-sizing: border-box;
-      }
-      html {
-        min-height: 100%;
-        display: grid;
+        border-box: border-box;
       }
       body {
+        align-items: center;
         display: flex;
         flex-direction: column;
+        height: 100vh;
+        justify-content: center;
       }
       form {
         max-width: 30rem;
         width: 90%;
-        margin: auto;
-      }
-      input[type="text"], input[type="password"] {
-        width: 100%;
-        font-size: 2rem;
-      }
-      input[type="submit"] {
-        margin: auto;
-        font-size: 1.5rem;
       }
       input {
         display: block;
+        margin-bottom: 1rem;
+      }
+      input[type="text"], input[type="password"] {
+        font-size: 2rem;
+        width: 100%;
+      }
+      input[type="submit"] {
+        font-size: 1.5rem;
+        margin-left: auto;
+        margin-right: auto;
       }
       div {
-        margin-top: 40px;
-        width: 100%;
         background-color: black;
+        border-radius: 2px;
         color: #0F0;
         padding: 0.5rem;
-        border-radius: 2px;
       }
       pre {
-        width: 100%;
-        margin: 0;
         font-size: 1.5rem;
+        margin: 0;
         overflow-x: scroll;
       }
     </style>
@@ -53,10 +50,11 @@
 <body>
     <form id="phorm">
         <label for="ssid">SSID:</label>
-        <input id="ssid" type="text" /><br /><br />
+        <input id="ssid" type="text" />
         <label for="pass">Password:</label>
-        <input id="pass" type="password"><br /><br />
+        <input id="pass" type="password">
         <input type="submit" value="Phreak Me" />
+        <br />
         <div>
           <pre id="digs"> </pre>
         </div>
