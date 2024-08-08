@@ -1,0 +1,1 @@
+savedcmd_/home/recurse/driver/phoneodeo_mod.ko := ld -r -EL -z noexecstack --no-warn-rwx-segments --build-id=sha1  -T arch/arm/module.lds -o /home/recurse/driver/phoneodeo_mod.ko /home/recurse/driver/phoneodeo_mod.o /home/recurse/driver/phoneodeo_mod.mod.o;  true

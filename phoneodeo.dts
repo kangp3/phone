@@ -9,20 +9,18 @@
         target = <&sound>;
         __overlay__ {
             compatible = "simple-audio-card";
-            simple-audio-card,name = "GenericStereoAudioCodec";
+            simple-audio-card,name = "phoneodeo";
             status = "okay";
 
 	    capture_link: simple-audio-card,dai-link@0 {
                 format = "i2s";
 
-                // Set RasPi to I2S slave
                 bitclock-master = <&r_codec_dai>;
                 frame-master = <&r_codec_dai>;
 
                 r_cpu_dai: cpu {
                     sound-dai = <&i2s>;
 
-                    // TDM slot configuration for stereo
                     dai-tdm-slot-num = <2>;
                     dai-tdm-slot-width = <32>;
                 };

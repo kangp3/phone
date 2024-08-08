@@ -1,0 +1,16 @@
+pcm.asymed {
+        type asym
+        #playback.pcm "dmixer"
+        playback.pcm "hw:0,0"
+        capture.pcm "hw:1,0"
+}
+
+pcm.dsp0 {
+    type plug
+    slave.pcm "asymed"
+}
+
+pcm.!default {
+        type plug
+        slave.pcm "asymed"
+}
