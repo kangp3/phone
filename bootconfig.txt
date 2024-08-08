@@ -29,7 +29,7 @@ dtoverlay=pwm2chan,pin=12,func=2,pin=13,func2=4
 max_framebuffers=2
 
 # Enable I2S ADC input
-dtoverlay=genericstereoaudiocodec
+dtoverlay=phoneodeo
 
 # Don't have the firmware create an initial video= setting in cmdline.txt.
 # Use the kernel's default instead.

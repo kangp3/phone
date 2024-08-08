@@ -36,15 +36,11 @@ speaker-test -t sine -f 440 -l0
 cross build --target=arm-unknown-linux-gnueabihf
 ```
 
-### Driver install????
-- `make`
-- `xz -z phoneodeo_mod.ko`
-- `sudo mkdir /usr/lib/modules/$(uname -r)/extramodules`
-- `sudo cp phoneodeo_mod.ko.xz /usr/lib/modules/$(uname -r)/extramodules`
-- `sudo depmod`
-
-### Fix my shit
-- sudo apt-get reinstall -y linux-headers-6.6.31+rpt-rpi-v6 linux-image-6.6.31+rpt-rpi-v6
+### Device Tree compile
+```
+dtc -@ -H epapr -O dtb -o phoneodeo.dtbo -Wno-unit_address_vs_reg phoneodeo.dts
+sudo cp phoneodeo.dtbo /boot/overlays
+```
 
 ## Relevant Material
 - [SLIC datasheet](https://silvertel.com/images/datasheets/Ag1171-datasheet-Low-cost-ringing-SLIC-with-single-supply.pdf)
