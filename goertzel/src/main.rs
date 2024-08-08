@@ -62,7 +62,8 @@ impl<'a> Goertzeler<'a> {
 }
 
 
-fn main() {
+#[tokio::main]
+async fn main() {
     let gz_coeffs = FREQS.map(|f| goertzel_coeff(f, SAMPLE_FREQ));
     let ham_coeffs: Vec<_> = (0..CHUNK_SIZE)
         .map(|n| 0.54 - 0.46* (2.0*PI*(n as f64)/((CHUNK_SIZE-1) as f64)).cos())

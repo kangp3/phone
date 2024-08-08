@@ -9,3 +9,4 @@ hound = "3.5.1"
 itertools = "0.13.0"
 pico-args = "0.5.0"
 ringbuf = "0.4.1"
+tokio = { version = "1.39.1", features = ["full"] }
