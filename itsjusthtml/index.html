@@ -5,16 +5,22 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Phreak My Wi-Fi</title>
     <style>
+      * {
+        border-box: border-box;
+        -moz-box-sizing: border-box;
+        -webkit-box-sizing: border-box;
+      }
       html {
         min-height: 100%;
         display: grid;
       }
       body {
-        display: grid;
+        display: flex;
+        flex-direction: column;
       }
       form {
-        max-width: 95%;
-        display: grid;
+        max-width: 30rem;
+        width: 90%;
         margin: auto;
       }
       input[type="text"], input[type="password"] {
@@ -26,7 +32,21 @@
         font-size: 1.5rem;
       }
       input {
-        margin-bottom: 20px;
+        display: block;
+      }
+      div {
+        margin-top: 40px;
+        width: 100%;
+        background-color: black;
+        color: #0F0;
+        padding: 0.5rem;
+        border-radius: 2px;
+      }
+      pre {
+        width: 100%;
+        margin: 0;
+        font-size: 1.5rem;
+        overflow-x: scroll;
       }
     </style>
 </head>
@@ -37,6 +57,9 @@
         <label for="pass">Password:</label>
         <input id="pass" type="password"><br /><br />
         <input type="submit" value="Phreak Me" />
+        <div>
+          <pre id="digs"> </pre>
+        </div>
     </form>
     <script>
         const TEXT_MAPPING = [
@@ -63,24 +86,27 @@
           [",", ".", "<", ">"],
           ["-", "_", "=", "+"],
         ];
-        const DTMF_NEXT = "#";
-        const DTMF_END = "0";
+        const DTMF_NEXT = 12;  // This is #
+        const DTMF_MODE = 1;
+        const DTMF_END = 0;
         const DTMF_ENCODINGS = {};
         TEXT_MAPPING.forEach((cs, i) => {
           cs.forEach((c, j) => DTMF_ENCODINGS[c] = new Array(j+1).fill(i));
         });
         TEXT_MAPPING.forEach((cs, i) => {
-          cs.forEach((c, j) => DTMF_ENCODINGS[c.toUpperCase()] = [1].concat(new Array(j+1).fill(i)));
+          cs.forEach((c, j) => DTMF_ENCODINGS[c.toUpperCase()] = [DTMF_MODE].concat(new Array(j+1).fill(i)));
         });
         SYM_MAPPING.forEach((cs, i) => {
-          cs.forEach((c, j) => DTMF_ENCODINGS[c] = [1, 1].concat(new Array(j+1).fill(i)));
+          cs.forEach((c, j) => DTMF_ENCODINGS[c] = [DTMF_MODE, DTMF_MODE].concat(new Array(j+1).fill(i)));
         });
-        [...Array(10).keys()].forEach((c) => DTMF_ENCODINGS[c] = [1, 1, 1, c]);
+        [...Array(10).keys()].forEach((c) => DTMF_ENCODINGS[c] = [DTMF_MODE, DTMF_MODE, DTMF_MODE, c]);
     </script>
     <script>
-        const DTMF_LOW_TONES = [697, 770, 852];
+        const DTMF_LOW_TONES = [697, 770, 852, 941];
         const DTMF_HIGH_TONES = [1209, 1336, 1477];
         const DTMF_TONE_MAPPING = [];
+        // Zero is in here twice because then 1 maps to 1
+        const DTMF_PRETTY_MAPPING = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "*", "0", "#"];
         DTMF_TONE_MAPPING.push([941, 1336]);
         DTMF_LOW_TONES.forEach((l) => DTMF_HIGH_TONES.forEach((h) => DTMF_TONE_MAPPING.push([l, h])));
     </script>
@@ -89,6 +115,7 @@
         const OFF = 0;
 
         const form = document.getElementById("phorm");
+        const digs_pre = document.getElementById("digs");
         let ctx, vol, osc1, osc2;
 
         let started = false;
@@ -116,14 +143,31 @@
           const ssid = document.getElementById("ssid").value;
           const pass = document.getElementById("pass").value;
 
-          let t = ctx.currentTime + 0.05;
-          const ssid_enc = ssid.split("").map((c) => DTMF_ENCODINGS[c]).flat();
-          const pass_enc = pass.split("").map((c) => DTMF_ENCODINGS[c]).flat();
+          const startTime = ctx.currentTime;
+          let t = startTime + 0.05;
+          const encode_string = (s) => s.split("").map(
+            (c, idx, arr) => {
+              const curr_enc = DTMF_ENCODINGS[c];
+              const next_enc = DTMF_ENCODINGS[arr[idx+1]] || [null];
+              return curr_enc.concat(next_enc[0] == DTMF_MODE || curr_enc[0] != next_enc[0] ? [] : [DTMF_NEXT])
+            })
+            .flat();
+          const ssid_enc = encode_string(ssid);
+          const pass_enc = encode_string(pass);
           const encoding = ssid_enc.concat([DTMF_END]).concat(pass_enc).concat([DTMF_END]);
+          digs_pre.innerHTML = " ";
           encoding.forEach((dig) => {
             const [f1, f2] = DTMF_TONE_MAPPING[dig];
             osc1.frequency.setValueAtTime(f1, t);
             osc2.frequency.setValueAtTime(f2, t);
+            setTimeout(() => {
+              if (digs_pre.innerHTML == " ") {
+                digs_pre.innerHTML = DTMF_PRETTY_MAPPING[dig];
+              } else {
+                digs_pre.innerHTML += DTMF_PRETTY_MAPPING[dig];
+              }
+              digs_pre.scroll({left: digs_pre.scrollWidth, top: 0});
+            }, (t-startTime)*1000);
             vol.gain.setTargetAtTime(ON, t, 0.005);
             t += 0.07;
             vol.gain.setTargetAtTime(OFF, t, 0.005);
