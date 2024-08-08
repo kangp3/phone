@@ -23,7 +23,8 @@ def plot_wav_samples(wav_file, outfile):
         print(n_frames)
         shifted_frames = []
         for i in range(0, len(frames), 4):
-            offset = 9 if i % 8 == 0 else 1
+            #offset = 9 if i % 8 == 0 else 1
+            offset = 0
             shifted = ((frames[i+3] << 24) + (frames[i+2] << 16) + (frames[i+1] << 8) + (frames[i])) >> offset
             #if shifted > 65536 and i % 8 == 0:
             #    other_shifted = ((frames[i+3] << 24) + (frames[i+2] << 16) + (frames[i+1] << 8) + (frames[i])) >> offset
@@ -35,16 +36,16 @@ def plot_wav_samples(wav_file, outfile):
             #        idx = i+4*j
             #        print(i // 4 + j, f"{frames[idx]:02x} {frames[idx+1]:02x} {frames[idx+2]:02x} {frames[idx+3]:02x}")
             #    print()
-            #if 46358 <= i // 8 <= 46374:
-            #    val = shifted & 0xffff
-            #    print(i // 8, f"{frames[i+3]:08b} {frames[i+2]:08b} {frames[i+1]:08b} {frames[i]:08b}", twos_comp(val, 16))
-            #    print(i // 8, f"{(val >> 24) & 0xff:08b} {(val >> 16) & 0xff:08b} {(val >> 8) & 0xff:08b} {val & 0xff:08b}")
-            #    print()
-            shifted_frames.append(twos_comp(shifted & 0x7fff, 15))
+            if 58260 <= i // 8 <= 58320:
+                val = shifted & 0xffffff
+                print(i // 8, f"{frames[i+3]:08b} {frames[i+2]:08b} {frames[i+1]:08b} {frames[i]:08b}", twos_comp(val, 32))
+                print(i // 8, f"{(val >> 24) & 0xff:08b} {(val >> 16) & 0xff:08b} {(val >> 8) & 0xff:08b} {val & 0xff:08b}")
+                print()
+            shifted_frames.append(twos_comp(shifted, 32))
             #shifted_frames.append(twos_comp(shifted, 16))
 
         # Convert frames to numpy array
-        if sample_width == 3:
+        if sample_width >= 3:
             dtype = np.int32
         elif sample_width == 2:
             dtype = np.int16
@@ -52,7 +53,7 @@ def plot_wav_samples(wav_file, outfile):
             raise ValueError("Unsupported sample width")
 
         #samples = np.frombuffer(frames, dtype=dtype)
-        samples = np.array(shifted_frames, dtype=np.int16)
+        samples = np.array(shifted_frames, dtype=np.int32)
         print(samples.shape)
 
         # Reshape array based on number of channels
