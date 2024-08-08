@@ -161,6 +161,7 @@
             osc1.frequency.setValueAtTime(f1, t);
             osc2.frequency.setValueAtTime(f2, t);
             setTimeout(() => {
+              // TODO: This is makes big wide on phone in bad way. :(
               if (digs_pre.innerHTML == " ") {
                 digs_pre.innerHTML = DTMF_PRETTY_MAPPING[dig];
               } else {
