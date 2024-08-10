@@ -10,6 +10,10 @@ use ringbuf::traits::{RingBuffer, Consumer};
 use tokio::sync::mpsc::{UnboundedReceiver, unbounded_channel};
 
 
+pub const NULL: u8 = u8::MAX;
+pub const STAR: u8 = 10;
+pub const OCTOTHORPE: u8 = 12;
+
 const WINDOW_INTERVAL: usize = 1000;
 const CHUNK_SIZE: usize = 2000;
 // TODO(peter): Make this a runtime input
@@ -71,7 +75,7 @@ pub fn goertzelme(mut sample_channel: UnboundedReceiver<f32>) -> UnboundedReceiv
         .into_iter()
         .map(|_| Goertzeler::new())
         .collect();
-    let mut last_digit = 0;
+    let mut last_digit = NULL;
 
     let (send_ch, rcv_ch) = unbounded_channel();
     tokio::spawn(async move {
@@ -85,13 +89,15 @@ pub fn goertzelme(mut sample_channel: UnboundedReceiver<f32>) -> UnboundedReceiv
                     .collect();
                 let bg_sum = sorted_mags[2..].iter().map(|(_, mag)| mag).sum::<f64>();
                 let digit = match sorted_mags[0..2] {
-                    _ if sorted_mags[1].1 < bg_sum * THRESHOLD_MAG => 0,
-                    [(f1, _), (f2, _)] if f2 > 3 && f1 < 4 => f1*3 + f2-3,
-                    [(f1, _), (f2, _)] if f1 > 3 && f2 < 4 => f2*3 + f1-3,
-                    _ => 0,
+                    _ if sorted_mags[1].1 < bg_sum * THRESHOLD_MAG => NULL,
+                    [(3, _), (5, _)] |
+                    [(5, _), (3, _)] => 0,
+                    [(f1, _), (f2, _)] if f2 > 3 && f1 < 4 => (f1*3 + f2-3).try_into().unwrap(),
+                    [(f1, _), (f2, _)] if f1 > 3 && f2 < 4 => (f2*3 + f1-3).try_into().unwrap(),
+                    _ => NULL,
                 };
-                if digit != 0 && digit != last_digit {
-                    send_ch.send(digit as u8).unwrap();
+                if digit != NULL && digit != last_digit {
+                    send_ch.send(digit).unwrap();
                 }
                 last_digit = digit;
 
