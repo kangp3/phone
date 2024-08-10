@@ -1,13 +1,5 @@
-use std::f64::consts::{self, PI};
-use std::slice::Iter;
-use std::time::Duration;
-
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{SampleFormat, SupportedStreamConfig};
-use itertools::Itertools;
-use ringbuf::storage::Heap;
-use ringbuf::SharedRb;
-use ringbuf::traits::{RingBuffer, Consumer};
 use tokio::sync::mpsc::unbounded_channel;
 
 use goertzel;
