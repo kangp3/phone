@@ -11,7 +11,7 @@ use tokio::sync::mpsc::{UnboundedReceiver, unbounded_channel};
 
 
 pub const NULL: u8 = u8::MAX;
-pub const STAR: u8 = 10;
+pub const SEXTILE: u8 = 10;
 pub const OCTOTHORPE: u8 = 12;
 
 const WINDOW_INTERVAL: usize = 1000;

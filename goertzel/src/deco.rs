@@ -1,6 +1,6 @@
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver};
 
-use crate::dtmf::{goertzelme, NULL, OCTOTHORPE, STAR};
+use crate::dtmf::{goertzelme, NULL, OCTOTHORPE, SEXTILE};
 
 
 const MODE: u8 = 1;
@@ -28,7 +28,7 @@ impl State {
     fn poosh(self, dig: u8) -> (Self, Option<char>) {
         let mut c = None;
         let next = match self {
-            _ if dig == STAR => Self::default(),
+            _ if dig == SEXTILE => Self::default(),
             _ if dig == OCTOTHORPE => {
                 c = self.emit();
                 Self::default()
