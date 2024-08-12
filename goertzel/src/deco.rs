@@ -12,22 +12,26 @@ enum State {
     Number,
 }
 
-const DEFAULT_STATE: State = State::Lower((NULL, 0));
+impl Default for State {
+    fn default() -> Self {
+        State::Lower((NULL, 0))
+    }
+}
 
 
 // TODO: Wrap this in another struct that can manage the state and handle emitting to channel
 impl State {
     fn new() -> Self {
-        State::Lower((NULL, 0))
+        Self::default()
     }
 
     fn poosh(self, dig: u8) -> (Self, Option<char>) {
         let mut c = None;
         let next = match self {
-            _ if dig == STAR => State::Lower((NULL, 0)),
+            _ if dig == STAR => Self::default(),
             _ if dig == OCTOTHORPE => {
                 c = self.emit();
-                DEFAULT_STATE
+                Self::default()
             }
 
             State::Lower((NULL, 0)) if (2..=9).contains(&dig) => State::Lower((dig, 1)),
@@ -36,7 +40,7 @@ impl State {
             State::Lower((NULL, 0)) if dig == MODE => State::Upper((NULL, 0)),
             State::Lower((n@(2..=9), _)) if dig != n => {
                 c = self.emit();
-                DEFAULT_STATE.poosh(dig).0
+                Self::default().poosh(dig).0
             }
 
             State::Upper((NULL, 0)) if (2..=9).contains(&dig) => State::Upper((dig, 1)),
@@ -45,30 +49,30 @@ impl State {
             State::Upper((NULL, 0)) if dig == MODE => State::Symbol((NULL, 0)),
             State::Upper((n@(2..=9), _)) if dig != n => {
                 c = self.emit();
-                DEFAULT_STATE.poosh(dig).0
+                Self::default().poosh(dig).0
             }
 
             State::Symbol((NULL, 0)) if (2..=9).contains(&dig) => State::Symbol((dig, 1)),
             State::Symbol((NULL, 0)) if dig == 0 => {
                 c = Some(' ');
-                DEFAULT_STATE
+                Self::default()
             }
             State::Symbol((n@(2..=9), m@(1..=3))) if n == dig => State::Symbol((n, m+1)),
             State::Symbol((NULL, 0)) if dig == MODE => State::Number,
             State::Symbol((n@(2..=9), _)) if dig != n => {
                 c = self.emit();
-                DEFAULT_STATE.poosh(dig).0
+                Self::default().poosh(dig).0
             }
 
             State::Number if (0..=9).contains(&dig) => {
                 c = char::from_digit(dig.into(), 10);
-                DEFAULT_STATE
+                Self::default()
             }
 
             _ if dig == 0 => {
                 c = self.emit();
                 // TODO(peter): Emit the control character as well
-                DEFAULT_STATE
+                Self::default()
             }
 
             _ => panic!("uh oh stinky state"),
