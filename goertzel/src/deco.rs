@@ -36,39 +36,8 @@ impl State {
                 Self::default()
             }
 
-            State::Lower((NULL, 0)) if (2..=9).contains(&dig) => State::Lower((dig, 1)),
-            State::Lower((n@(7|9), m@(1..=3))) |
-            State::Lower((n@(2..=6|8), m@(1..=2))) if n == dig => State::Lower((n, m+1)),
-            State::Lower((NULL, 0)) if dig == MODE => State::Upper((NULL, 0)),
-            State::Lower((n@(2..=9), _)) if dig != n => {
-                if let Some(ch) = self.emit() {
-                    c.push(ch);
-                }
-                let (s, mut chs) = Self::default().poosh(dig);
-                c.append(&mut chs);
-                s
-            }
-
-            State::Upper((NULL, 0)) if (2..=9).contains(&dig) => State::Upper((dig, 1)),
-            State::Upper((n@(7|9), m@(1..=3))) |
-            State::Upper((n@(2..=6|8), m@(1..=2))) if n == dig => State::Upper((n, m+1)),
-            State::Upper((NULL, 0)) if dig == MODE => State::Symbol((NULL, 0)),
-            State::Upper((n@(2..=9), _)) if dig != n => {
-                if let Some(ch) = self.emit() {
-                    c.push(ch);
-                }
-                let (s, mut chs) = Self::default().poosh(dig);
-                c.append(&mut chs);
-                s
-            }
-
-            State::Symbol((NULL, 0)) if (2..=9).contains(&dig) => State::Symbol((dig, 1)),
-            State::Symbol((NULL, 0)) if dig == 0 => {
-                c.push(' ');
-                Self::default()
-            }
-            State::Symbol((n@(2..=9), m@(1..=3))) if n == dig => State::Symbol((n, m+1)),
-            State::Symbol((NULL, 0)) if dig == MODE => State::Number,
+            State::Lower((n@(2..=9), _)) |
+            State::Upper((n@(2..=9), _)) |
             State::Symbol((n@(2..=9), _)) if dig != n => {
                 if let Some(ch) = self.emit() {
                     c.push(ch);
@@ -77,6 +46,24 @@ impl State {
                 c.append(&mut chs);
                 s
             }
+
+            State::Lower((NULL, 0)) if (2..=9).contains(&dig) => State::Lower((dig, 1)),
+            State::Lower((n@(7|9), m@(1..=3))) |
+            State::Lower((n@(2..=6|8), m@(1..=2))) if n == dig => State::Lower((n, m+1)),
+            State::Lower((NULL, 0)) if dig == MODE => State::Upper((NULL, 0)),
+
+            State::Upper((NULL, 0)) if (2..=9).contains(&dig) => State::Upper((dig, 1)),
+            State::Upper((n@(7|9), m@(1..=3))) |
+            State::Upper((n@(2..=6|8), m@(1..=2))) if n == dig => State::Upper((n, m+1)),
+            State::Upper((NULL, 0)) if dig == MODE => State::Symbol((NULL, 0)),
+
+            State::Symbol((NULL, 0)) if (2..=9).contains(&dig) => State::Symbol((dig, 1)),
+            State::Symbol((NULL, 0)) if dig == 0 => {
+                c.push(' ');
+                Self::default()
+            }
+            State::Symbol((n@(2..=9), m@(1..=3))) if n == dig => State::Symbol((n, m+1)),
+            State::Symbol((NULL, 0)) if dig == MODE => State::Number,
 
             State::Number if (0..=9).contains(&dig) => {
                 c.push(dig as char);
