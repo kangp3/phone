@@ -25,12 +25,14 @@ impl State {
         Self::default()
     }
 
-    fn poosh(self, dig: u8) -> (Self, Option<char>) {
-        let mut c = None;
+    fn poosh(self, dig: u8) -> (Self, Vec<char>) {
+        let mut c = Vec::new();
         let next = match self {
             _ if dig == SEXTILE => Self::default(),
             _ if dig == OCTOTHORPE => {
-                c = self.emit();
+                if let Some(ch) = self.emit() {
+                    c.push(ch);
+                }
                 Self::default()
             }
 
@@ -39,8 +41,12 @@ impl State {
             State::Lower((n@(2..=6|8), m@(1..=2))) if n == dig => State::Lower((n, m+1)),
             State::Lower((NULL, 0)) if dig == MODE => State::Upper((NULL, 0)),
             State::Lower((n@(2..=9), _)) if dig != n => {
-                c = self.emit();
-                Self::default().poosh(dig).0
+                if let Some(ch) = self.emit() {
+                    c.push(ch);
+                }
+                let (s, mut chs) = Self::default().poosh(dig);
+                c.append(&mut chs);
+                s
             }
 
             State::Upper((NULL, 0)) if (2..=9).contains(&dig) => State::Upper((dig, 1)),
@@ -48,30 +54,41 @@ impl State {
             State::Upper((n@(2..=6|8), m@(1..=2))) if n == dig => State::Upper((n, m+1)),
             State::Upper((NULL, 0)) if dig == MODE => State::Symbol((NULL, 0)),
             State::Upper((n@(2..=9), _)) if dig != n => {
-                c = self.emit();
-                Self::default().poosh(dig).0
+                if let Some(ch) = self.emit() {
+                    c.push(ch);
+                }
+                let (s, mut chs) = Self::default().poosh(dig);
+                c.append(&mut chs);
+                s
             }
 
             State::Symbol((NULL, 0)) if (2..=9).contains(&dig) => State::Symbol((dig, 1)),
             State::Symbol((NULL, 0)) if dig == 0 => {
-                c = Some(' ');
+                c.push(' ');
                 Self::default()
             }
             State::Symbol((n@(2..=9), m@(1..=3))) if n == dig => State::Symbol((n, m+1)),
             State::Symbol((NULL, 0)) if dig == MODE => State::Number,
             State::Symbol((n@(2..=9), _)) if dig != n => {
-                c = self.emit();
-                Self::default().poosh(dig).0
+                if let Some(ch) = self.emit() {
+                    c.push(ch);
+                }
+                let (s, mut chs) = Self::default().poosh(dig);
+                c.append(&mut chs);
+                s
             }
 
             State::Number if (0..=9).contains(&dig) => {
-                c = char::from_digit(dig.into(), 10);
+                c.push(dig as char);
                 Self::default()
             }
 
             _ if dig == 0 => {
-                c = self.emit();
-                // TODO(peter): Emit the control character as well
+                if let Some(ch) = self.emit() {
+                    c.push(ch);
+                }
+                // TODO: Handle this by just closing the send channel instead
+                c.push('\0');
                 Self::default()
             }
 
@@ -148,7 +165,7 @@ pub fn ding(sample_ch: UnboundedReceiver<f32>) -> UnboundedReceiver<char> {
         while let Some(dig) = digs_ch.recv().await {
             let pooshed = state.poosh(dig);
             state = pooshed.0;
-            if let Some(c) = pooshed.1 {
+            for c in pooshed.1.into_iter() {
                 send_ch.send(c).unwrap();
             }
         }
