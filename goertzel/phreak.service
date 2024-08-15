@@ -1,0 +1,11 @@
+[Unit]
+Description=Phreak my Wi-Fi service
+Requires=NetworkManager.service
+After=NetworkManager.service
+
+[Service]
+Restart=on-failure
+ExecStart=/home/recurse/goertzel
+
+[Install]
+WantedBy=multi-user.target

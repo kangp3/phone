@@ -1,5 +1,7 @@
 
-use goertzel;
+use std::{panic, process};
+
+use goertzel::{self, hook};
 use tokio::process::Command;
 
 
@@ -8,7 +10,16 @@ const SAMPLE_RATE: u32 = 48000;
 
 #[tokio::main]
 async fn main() {
+    let default_hook = panic::take_hook();
+    panic::set_hook(Box::new(move |v| {
+        default_hook(v);
+        process::exit(1);
+    }));
+
+    let _pin = hook::try_register_shk().unwrap();
+
     let mic = goertzel::audio::get_input_samples(SAMPLE_RATE);
+    dbg!("Got mic, listening...");
 
     let mut ssid = String::new();
     let mut pass = String::new();
@@ -31,8 +42,8 @@ async fn main() {
     // TODO: Delete debugs
     dbg!(&pass);
 
-    Command::new("nmcli")
-        .args(&["--wait", "5"])
+    let status = Command::new("nmcli")
+        .args(&["--wait", "20"])
         .args(&["device", "wifi"])
         .arg("connect")
         .arg(&ssid)
@@ -42,4 +53,7 @@ async fn main() {
         .wait()
         .await
         .unwrap();
+    if !status.success() {
+        panic!("Failed to connect to Wi-Fi");
+    }
 }

@@ -1,8 +1,7 @@
 pcm.asymed {
-        type asym
-        #playback.pcm "dmixer"
-        playback.pcm "hw:0,0"
-        capture.pcm "hw:1,0"
+    type asym
+    playback.pcm "hw:Headphones,0"
+    capture.pcm "hw:phoneodeo,0"
 }
 
 pcm.dsp0 {
@@ -11,6 +10,6 @@ pcm.dsp0 {
 }
 
 pcm.!default {
-        type plug
-        slave.pcm "asymed"
+    type plug
+    slave.pcm "asymed"
 }

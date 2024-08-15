@@ -42,6 +42,25 @@ dtc -@ -H epapr -O dtb -o phoneodeo.dtbo -Wno-unit_address_vs_reg phoneodeo.dts
 sudo cp phoneodeo.dtbo /boot/overlays
 ```
 
+### Install phreak.service
+```
+scp phreak.service recurse@peterpi.local:
+sudo chown root:root ~/phreak.service
+sudo chmod 777 ~/phreak.service
+sudo mv ~/phreak.service /etc/systemd/system
+sudo systemctl disable phreak.service
+sudo systemctl enable phreak.service
+```
+
+### Install .asoundrc
+scp asoundrc recurse@peterpi.local:.asoundrc
+sudo cp .asoundrc /root
+
+### Take down Wi-Fi
+```
+sudo nmcli connection delete 'Recurse Center'; sudo reboot
+```
+
 ## Relevant Material
 - [SLIC datasheet](https://silvertel.com/images/datasheets/Ag1171-datasheet-Low-cost-ringing-SLIC-with-single-supply.pdf)
 - [gpiozero docs](https://gpiozero.readthedocs.io/en/latest/)

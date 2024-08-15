@@ -1,3 +1,6 @@
+use std::thread::sleep;
+use std::time::Duration;
+
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{SampleFormat, Stream, SupportedStreamConfig};
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver};
@@ -13,14 +16,21 @@ pub fn get_input_samples(sample_rate: u32) -> ItMyMic {
     let host = cpal::default_host();
 
     let in_device = host.default_input_device().unwrap();
-    let in_config: SupportedStreamConfig = in_device
-        .supported_input_configs()
-        .unwrap()
-        .filter_map(|r| if r.channels() == 2 && r.sample_format() == SampleFormat::F32 {
-            r.try_with_sample_rate(cpal::SampleRate(sample_rate))
-        } else {
-            None
-        }).next().unwrap();
+    let in_config: SupportedStreamConfig = {
+        loop {
+            if let Ok(configs) = in_device.supported_input_configs() {
+                break configs
+                    .filter_map(|r| if r.channels() == 2 && r.sample_format() == SampleFormat::F32 {
+                        r.try_with_sample_rate(cpal::SampleRate(sample_rate))
+                    } else {
+                        None
+                    }).next().unwrap();
+            } else {
+                dbg!("Failed to get input device configs, retrying...");
+                sleep(Duration::from_secs(1));
+            }
+        }
+    };
 
     let mut playback_idx = 0;
     let in_stream = in_device.build_input_stream(
@@ -33,7 +43,7 @@ pub fn get_input_samples(sample_rate: u32) -> ItMyMic {
                 playback_idx += 1;
             }
         },
-        move |_| { dbg!("Fuck error handling 😮"); },
+        move |_| { panic!("Fuck error handling 😮"); },
         None,
     ).unwrap();
 

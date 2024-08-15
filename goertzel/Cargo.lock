@@ -256,6 +256,7 @@ dependencies = [
  "cpal",
  "itertools 0.13.0",
  "ringbuf",
+ "rppal",
  "tokio",
 ]
 
@@ -650,6 +651,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5c65e4c865bc3d2e3294493dff0acf7e6c259d066e34e22059fa9c39645c3636"
 dependencies = [
  "crossbeam-utils",
+]
+
+[[package]]
+name = "rppal"
+version = "0.19.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3b37e992f3222e304708025de77c9e395068a347449d0d7164f52d3beccdbd8d"
+dependencies = [
+ "libc",
 ]
 
 [[package]]
