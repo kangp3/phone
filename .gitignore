@@ -1,1 +1,7 @@
 goertzel/target
+
+# KiCAD
+**/*-backups
+*.kicad_*.lck
+**/\#auto_saved_files\#
+**/fp-info-cache
