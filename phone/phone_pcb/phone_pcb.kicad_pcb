@@ -194,11 +194,24 @@
 				)
 			)
 		)
+		(property "LCSC" ""
+			(at 0 0 0)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "8698922d-23a7-44c3-90db-cc80e7d6bf2e")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
 		(property ki_fp_filters "Pin* Test*")
 		(path "/1df21b3e-f03a-4a8f-8cec-b77da425617e")
 		(sheetname "Root")
 		(sheetfile "phone_pcb.kicad_sch")
-		(attr exclude_from_pos_files)
+		(attr exclude_from_pos_files dnp)
 		(fp_circle
 			(center 0 0)
 			(end 0 1.2)
@@ -251,7 +264,7 @@
 		(descr "Resistor SMD 0402 (1005 Metric), square (rectangular) end terminal, IPC_7351 nominal, (Body size source: IPC-SM-782 page 72, https://www.pcb-3d.com/wordpress/wp-content/uploads/ipc-sm-782a_amendment_1_and_2.pdf), generated with kicad-footprint-generator")
 		(tags "resistor")
 		(property "Reference" "R1"
-			(at 0 -1.17 360)
+			(at 0 -1.17 0)
 			(layer "F.SilkS")
 			(uuid "657692d0-a78c-48b0-ae4e-e3bf410e1c81")
 			(effects
@@ -262,7 +275,7 @@
 			)
 		)
 		(property "Value" "1k"
-			(at 0 1.17 360)
+			(at 0 1.17 0)
 			(layer "F.Fab")
 			(uuid "f019a6c3-c954-4fa5-86be-3f81a3887fce")
 			(effects
@@ -307,6 +320,19 @@
 			(effects
 				(font
 					(size 1.27 1.27)
+					(thickness 0.15)
+				)
+			)
+		)
+		(property "LCSC" "C11702"
+			(at 0 0 0)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "ce21adf0-3b3e-4fee-b954-aa37750f2c4b")
+			(effects
+				(font
+					(size 1 1)
 					(thickness 0.15)
 				)
 			)
@@ -417,7 +443,7 @@
 			(uuid "b0e55b84-92f5-46f4-8432-d540d22f2193")
 		)
 		(fp_text user "${REFERENCE}"
-			(at 0 0 360)
+			(at 0 0 0)
 			(layer "F.Fab")
 			(uuid "4e4c9040-977f-4196-8efa-fc98e29a3545")
 			(effects
@@ -520,6 +546,19 @@
 			(effects
 				(font
 					(size 1.27 1.27)
+					(thickness 0.15)
+				)
+			)
+		)
+		(property "LCSC" "C7171"
+			(at 0 0 90)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "416106b6-0cc4-432c-b843-298e0b4f30ae")
+			(effects
+				(font
+					(size 1 1)
 					(thickness 0.15)
 				)
 			)
@@ -753,6 +792,19 @@
 			(effects
 				(font
 					(size 1.27 1.27)
+					(thickness 0.15)
+				)
+			)
+		)
+		(property "LCSC" "C2866894"
+			(at 0 0 -90)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "987627d3-0975-43a0-876b-81ad012b19f9")
+			(effects
+				(font
+					(size 1 1)
 					(thickness 0.15)
 				)
 			)
@@ -1233,10 +1285,23 @@
 				)
 			)
 		)
+		(property "LCSC" ""
+			(at 0 0 0)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "a5e62f82-83ff-4442-862f-f45a5a4dbf35")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
 		(path "/c2fc6a6c-6dd1-4455-aafa-8403e9b88da8")
 		(sheetname "Root")
 		(sheetfile "phone_pcb.kicad_sch")
-		(attr through_hole)
+		(attr through_hole dnp)
 		(fp_line
 			(start -1.33 -1.33)
 			(end 0 -1.33)
@@ -1631,6 +1696,19 @@
 				)
 			)
 		)
+		(property "LCSC" "C1525"
+			(at 0 0 -90)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "703f3593-85b6-4055-902e-7eed5e1b7a52")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
 		(property ki_fp_filters "C_*")
 		(path "/81ccd4a7-3f49-486f-9d86-05e0a11fdd0a")
 		(sheetname "Root")
@@ -1844,11 +1922,24 @@
 				)
 			)
 		)
+		(property "LCSC" ""
+			(at 0 0 0)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "3dae002c-64cb-4c60-8788-057f957b104b")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
 		(property ki_fp_filters "Pin* Test*")
 		(path "/c0fa231e-4b31-4c68-b6e5-824799af533f")
 		(sheetname "Root")
 		(sheetfile "phone_pcb.kicad_sch")
-		(attr exclude_from_pos_files)
+		(attr exclude_from_pos_files dnp)
 		(fp_circle
 			(center 0 0)
 			(end 0 1.2)
@@ -1901,7 +1992,7 @@
 		(descr "Capacitor SMD 0402 (1005 Metric), square (rectangular) end terminal, IPC_7351 nominal, (Body size source: IPC-SM-782 page 76, https://www.pcb-3d.com/wordpress/wp-content/uploads/ipc-sm-782a_amendment_1_and_2.pdf), generated with kicad-footprint-generator")
 		(tags "capacitor")
 		(property "Reference" "C3"
-			(at 0 1 360)
+			(at 0 1 0)
 			(layer "F.SilkS")
 			(uuid "4181911c-1638-4303-afa9-779b61a9ad80")
 			(effects
@@ -1912,7 +2003,7 @@
 			)
 		)
 		(property "Value" "1uF"
-			(at 0 1.16 360)
+			(at 0 1.16 0)
 			(layer "F.Fab")
 			(uuid "26e65fb2-a8a0-4054-952c-1dd0d1d8161d")
 			(effects
@@ -1957,6 +2048,19 @@
 			(effects
 				(font
 					(size 1.27 1.27)
+					(thickness 0.15)
+				)
+			)
+		)
+		(property "LCSC" "C52923"
+			(at 0 0 180)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "24ca11c8-b4b9-4400-8649-6aa8da14e034")
+			(effects
+				(font
+					(size 1 1)
 					(thickness 0.15)
 				)
 			)
@@ -2067,7 +2171,7 @@
 			(uuid "a6532098-5ba0-4ca9-92ca-08ed67c4e8f2")
 		)
 		(fp_text user "${REFERENCE}"
-			(at 0 0 360)
+			(at 0 0 0)
 			(layer "F.Fab")
 			(uuid "8026a45b-5978-4e03-bcda-4333059e88b8")
 			(effects
@@ -2114,7 +2218,7 @@
 		(descr "C, Radial series, Radial, pin pitch=2.50mm, diameter=6.3mm, height=7mm, Non-Polar Electrolytic Capacitor")
 		(tags "C Radial series Radial pin pitch 2.50mm diameter 6.3mm height 7mm Non-Polar Electrolytic Capacitor")
 		(property "Reference" "C12"
-			(at 1.25 -4.4 360)
+			(at 1.25 -4.4 0)
 			(layer "F.SilkS")
 			(uuid "681b25e8-4302-449e-b833-79b2512e8eca")
 			(effects
@@ -2125,7 +2229,7 @@
 			)
 		)
 		(property "Value" "470u"
-			(at 1.25 4.4 360)
+			(at 1.25 4.4 0)
 			(layer "F.Fab")
 			(uuid "91e1e22c-6c87-40c3-961b-ab16d702489d")
 			(effects
@@ -2174,11 +2278,24 @@
 				)
 			)
 		)
+		(property "LCSC" ""
+			(at 0 0 180)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "7e0aed69-794f-4b6f-bdec-a10ec5692777")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
 		(property ki_fp_filters "CP_*")
 		(path "/8c58bc87-8bad-41b1-9f61-98949465327f")
 		(sheetname "Root")
 		(sheetfile "phone_pcb.kicad_sch")
-		(attr through_hole)
+		(attr through_hole dnp)
 		(fp_circle
 			(center 1.25 0)
 			(end 4.52 0)
@@ -2213,7 +2330,7 @@
 			(uuid "d16f5485-23e5-4439-8cdd-993b9f09b844")
 		)
 		(fp_text user "${REFERENCE}"
-			(at 1.25 0 360)
+			(at 1.25 0 0)
 			(layer "F.Fab")
 			(uuid "b4dcebbb-2ac6-4094-80bb-ab63e05a2ea2")
 			(effects
@@ -2318,6 +2435,19 @@
 			(effects
 				(font
 					(size 1.27 1.27)
+					(thickness 0.15)
+				)
+			)
+		)
+		(property "LCSC" "C1525"
+			(at 0 0 -90)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "cdd82e31-568c-41cc-8580-fefae4980849")
+			(effects
+				(font
+					(size 1 1)
 					(thickness 0.15)
 				)
 			)
@@ -2475,7 +2605,7 @@
 		(descr "THT pad as test Point, diameter 2.0mm, hole diameter 1.0mm")
 		(tags "test point THT pad")
 		(property "Reference" "TP2"
-			(at 0 -1.998 360)
+			(at 0 -1.998 0)
 			(layer "F.SilkS")
 			(uuid "4380d806-8d90-482b-a6cb-62c69e72fe48")
 			(effects
@@ -2486,7 +2616,7 @@
 			)
 		)
 		(property "Value" "PCM_{FS}"
-			(at 0 2.05 360)
+			(at 0 2.05 0)
 			(layer "F.Fab")
 			(uuid "723ca583-c525-43b9-a3b9-4b5bead115af")
 			(effects
@@ -2535,11 +2665,24 @@
 				)
 			)
 		)
+		(property "LCSC" ""
+			(at 0 0 0)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "1798b062-f8bb-4de3-b65d-65538de1c9cc")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
 		(property ki_fp_filters "Pin* Test*")
 		(path "/182de4a9-ab86-45dd-94c2-64dbec8126d9")
 		(sheetname "Root")
 		(sheetfile "phone_pcb.kicad_sch")
-		(attr exclude_from_pos_files)
+		(attr exclude_from_pos_files dnp)
 		(fp_circle
 			(center 0 0)
 			(end 0 1.2)
@@ -2563,7 +2706,7 @@
 			(uuid "70848a72-6425-49e3-b926-c52cb9029293")
 		)
 		(fp_text user "${REFERENCE}"
-			(at 0 -2 360)
+			(at 0 -2 0)
 			(layer "F.Fab")
 			(uuid "84afe8a0-148b-4ec2-a283-e5cb17d83e57")
 			(effects
@@ -2652,11 +2795,24 @@
 				)
 			)
 		)
+		(property "LCSC" ""
+			(at 0 0 0)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "84d2263a-bd31-4761-bd6b-5bef78bc6f6f")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
 		(property ki_fp_filters "Pin* Test*")
 		(path "/7e1a8ee8-26cf-4705-a2c4-5d43f8f21f02")
 		(sheetname "Root")
 		(sheetfile "phone_pcb.kicad_sch")
-		(attr exclude_from_pos_files)
+		(attr exclude_from_pos_files dnp)
 		(fp_circle
 			(center 0 0)
 			(end 0 1.2)
@@ -2765,6 +2921,19 @@
 			(effects
 				(font
 					(size 1.27 1.27)
+					(thickness 0.15)
+				)
+			)
+		)
+		(property "LCSC" "C4328"
+			(at 0 0 90)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "534382bb-24c6-49a6-9616-152eaf8b8ef3")
+			(effects
+				(font
+					(size 1 1)
 					(thickness 0.15)
 				)
 			)
@@ -2922,7 +3091,7 @@
 		(descr "Capacitor SMD 0402 (1005 Metric), square (rectangular) end terminal, IPC_7351 nominal, (Body size source: IPC-SM-782 page 76, https://www.pcb-3d.com/wordpress/wp-content/uploads/ipc-sm-782a_amendment_1_and_2.pdf), generated with kicad-footprint-generator")
 		(tags "capacitor")
 		(property "Reference" "C9"
-			(at -2.275 0 360)
+			(at -2.275 0 0)
 			(layer "F.SilkS")
 			(uuid "83a2af2c-3cf0-4efc-b535-9989671f188a")
 			(effects
@@ -2933,7 +3102,7 @@
 			)
 		)
 		(property "Value" "100n"
-			(at 0 1.16 360)
+			(at 0 1.16 0)
 			(layer "F.Fab")
 			(hide yes)
 			(uuid "a3161efd-326f-4dda-b5c9-22b9dc72f4f6")
@@ -2979,6 +3148,19 @@
 			(effects
 				(font
 					(size 1.27 1.27)
+					(thickness 0.15)
+				)
+			)
+		)
+		(property "LCSC" "C1525"
+			(at 0 0 0)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "1aadeecf-a199-475b-ab1b-227d9354a5dd")
+			(effects
+				(font
+					(size 1 1)
 					(thickness 0.15)
 				)
 			)
@@ -3089,7 +3271,7 @@
 			(uuid "6570e199-7a25-43be-9afd-cc51af6dab99")
 		)
 		(fp_text user "${REFERENCE}"
-			(at 0 0 360)
+			(at 0 0 0)
 			(layer "F.Fab")
 			(uuid "b45f69c9-dbea-405b-bd06-aa93f9af5f09")
 			(effects
@@ -3136,7 +3318,7 @@
 		(descr "Tantalum Capacitor SMD Kemet-A (3216-18 Metric), IPC_7351 nominal, (Body size from: http://www.kemet.com/Lists/ProductCatalog/Attachments/253/KEM_TC101_STD.pdf), generated with kicad-footprint-generator")
 		(tags "capacitor tantalum")
 		(property "Reference" "C8"
-			(at 0 -1.75 360)
+			(at 0 -1.75 0)
 			(layer "F.SilkS")
 			(uuid "9fae892a-caf6-4df9-8e2b-16976360dd87")
 			(effects
@@ -3147,7 +3329,7 @@
 			)
 		)
 		(property "Value" "10u"
-			(at 0 1.75 360)
+			(at 0 1.75 0)
 			(layer "F.Fab")
 			(uuid "c74ff02f-6d33-4fe3-a06b-512e43e3c36f")
 			(effects
@@ -3192,6 +3374,19 @@
 			(effects
 				(font
 					(size 1.27 1.27)
+					(thickness 0.15)
+				)
+			)
+		)
+		(property "LCSC" "C7171"
+			(at 0 0 180)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "b9c1b6f2-8365-405e-b4df-2e38805bee03")
+			(effects
+				(font
+					(size 1 1)
 					(thickness 0.15)
 				)
 			)
@@ -3322,7 +3517,7 @@
 			(uuid "a326a9a1-ca86-4700-a66a-65f6213b395d")
 		)
 		(fp_text user "${REFERENCE}"
-			(at 0 0 360)
+			(at 0 0 0)
 			(layer "F.Fab")
 			(uuid "83d1a26e-6425-4c9e-8bc0-0911251e6880")
 			(effects
@@ -3369,7 +3564,7 @@
 		(descr "Capacitor SMD 0402 (1005 Metric), square (rectangular) end terminal, IPC_7351 nominal, (Body size source: IPC-SM-782 page 76, https://www.pcb-3d.com/wordpress/wp-content/uploads/ipc-sm-782a_amendment_1_and_2.pdf), generated with kicad-footprint-generator")
 		(tags "capacitor")
 		(property "Reference" "C2"
-			(at 0 -1.16 360)
+			(at 0 -1.16 0)
 			(layer "F.SilkS")
 			(uuid "9209160a-483c-43fe-84cf-1500116fd52c")
 			(effects
@@ -3380,7 +3575,7 @@
 			)
 		)
 		(property "Value" "1uF"
-			(at 0 1.16 360)
+			(at 0 1.16 0)
 			(layer "F.Fab")
 			(uuid "f296b30b-467b-469b-9884-1fd429b17176")
 			(effects
@@ -3425,6 +3620,19 @@
 			(effects
 				(font
 					(size 1.27 1.27)
+					(thickness 0.15)
+				)
+			)
+		)
+		(property "LCSC" "C52923"
+			(at 0 0 180)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "0dc25c84-17cf-4be6-b01f-5a7d38feabd4")
+			(effects
+				(font
+					(size 1 1)
 					(thickness 0.15)
 				)
 			)
@@ -3535,7 +3743,7 @@
 			(uuid "9fed35a2-834b-4d17-a79f-d19ba75f4b72")
 		)
 		(fp_text user "${REFERENCE}"
-			(at 0 0 360)
+			(at 0 0 0)
 			(layer "F.Fab")
 			(uuid "df0ea937-4288-49fe-a438-f3fbad0ad788")
 			(effects
@@ -3638,6 +3846,19 @@
 			(effects
 				(font
 					(size 1.27 1.27)
+					(thickness 0.15)
+				)
+			)
+		)
+		(property "LCSC" "C7171"
+			(at 0 0 90)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "66ed7db4-3542-47ab-afd4-c528d49974db")
+			(effects
+				(font
+					(size 1 1)
 					(thickness 0.15)
 				)
 			)
@@ -3875,6 +4096,19 @@
 				)
 			)
 		)
+		(property "LCSC" "C7171"
+			(at 0 0 90)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "dbe589f7-5f6e-4b1e-93de-e4438ca98c95")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
 		(property ki_fp_filters "CP_*")
 		(path "/9b222595-e003-47c6-81b8-7899f3fde99a")
 		(sheetname "Root")
@@ -4048,7 +4282,7 @@
 		(descr "THT pad as test Point, diameter 2.0mm, hole diameter 1.0mm")
 		(tags "test point THT pad")
 		(property "Reference" "TP1"
-			(at 0 -1.998 360)
+			(at 0 -1.998 0)
 			(layer "F.SilkS")
 			(uuid "bc9baef2-1f8b-4643-96d8-388c85900fe8")
 			(effects
@@ -4059,7 +4293,7 @@
 			)
 		)
 		(property "Value" "PCM_{CLK}"
-			(at 0 2.05 360)
+			(at 0 2.05 0)
 			(layer "F.Fab")
 			(uuid "8708100c-8bf4-4412-8e53-9e8218ba74a6")
 			(effects
@@ -4108,11 +4342,24 @@
 				)
 			)
 		)
+		(property "LCSC" ""
+			(at 0 0 0)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "eb6a75a8-7ea8-4c88-a3f7-05b0096f7311")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
 		(property ki_fp_filters "Pin* Test*")
 		(path "/933e6f15-f434-487e-878a-489b593ca2d5")
 		(sheetname "Root")
 		(sheetfile "phone_pcb.kicad_sch")
-		(attr exclude_from_pos_files)
+		(attr exclude_from_pos_files dnp)
 		(fp_circle
 			(center 0 0)
 			(end 0 1.2)
@@ -4136,7 +4383,7 @@
 			(uuid "b99e70e2-d7e0-485f-b112-f74cc1fb1d4d")
 		)
 		(fp_text user "${REFERENCE}"
-			(at 0 -2 360)
+			(at 0 -2 0)
 			(layer "F.Fab")
 			(uuid "68f8b459-b2cb-42eb-b245-17a18b8284a4")
 			(effects
@@ -4225,11 +4472,24 @@
 				)
 			)
 		)
+		(property "LCSC" ""
+			(at 0 0 0)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "2c667b11-35f4-4f62-bcaf-1e59cbc7f992")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
 		(property ki_fp_filters "Pin* Test*")
 		(path "/5b17a215-992c-4818-b01c-057ce4728732")
 		(sheetname "Root")
 		(sheetfile "phone_pcb.kicad_sch")
-		(attr exclude_from_pos_files)
+		(attr exclude_from_pos_files dnp)
 		(fp_circle
 			(center 0 0)
 			(end 0 1.2)
@@ -4338,6 +4598,19 @@
 			(effects
 				(font
 					(size 1.27 1.27)
+					(thickness 0.15)
+				)
+			)
+		)
+		(property "LCSC" "C437128"
+			(at 0 0 90)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "35072a32-9a40-4bfc-9d3a-b1b4a682af10")
+			(effects
+				(font
+					(size 1 1)
 					(thickness 0.15)
 				)
 			)
@@ -4607,7 +4880,7 @@
 		(descr "THT pad as test Point, diameter 2.0mm, hole diameter 1.0mm")
 		(tags "test point THT pad")
 		(property "Reference" "TP3"
-			(at 0 -1.998 360)
+			(at 0 -1.998 0)
 			(layer "F.SilkS")
 			(uuid "f10d33eb-fcde-402c-aced-9b6e3bd2e43e")
 			(effects
@@ -4618,7 +4891,7 @@
 			)
 		)
 		(property "Value" "PCM_{DIN}"
-			(at 0 2.05 360)
+			(at 0 2.05 0)
 			(layer "F.Fab")
 			(uuid "dcae620f-f5ea-4008-85fb-007f58065d1a")
 			(effects
@@ -4667,11 +4940,24 @@
 				)
 			)
 		)
+		(property "LCSC" ""
+			(at 0 0 0)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "9ebcee8e-560b-4a7f-a58a-00b719c5858d")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
 		(property ki_fp_filters "Pin* Test*")
 		(path "/3635787a-4632-48a8-a192-8634da5529fa")
 		(sheetname "Root")
 		(sheetfile "phone_pcb.kicad_sch")
-		(attr exclude_from_pos_files)
+		(attr exclude_from_pos_files dnp)
 		(fp_circle
 			(center 0 0)
 			(end 0 1.2)
@@ -4695,7 +4981,7 @@
 			(uuid "5009d67b-a10d-4e0e-8aa4-e2e4bf282b3a")
 		)
 		(fp_text user "${REFERENCE}"
-			(at 0 -2 360)
+			(at 0 -2 0)
 			(layer "F.Fab")
 			(uuid "a39684c6-7490-49a2-b8b8-e648ea9ea0a9")
 			(effects
@@ -4780,6 +5066,19 @@
 			(effects
 				(font
 					(size 1.27 1.27)
+					(thickness 0.15)
+				)
+			)
+		)
+		(property "LCSC" "C15195"
+			(at 0 0 0)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "e856ee23-35a1-4666-beae-6a46d3a7d741")
+			(effects
+				(font
+					(size 1 1)
 					(thickness 0.15)
 				)
 			)
@@ -4997,11 +5296,24 @@
 				)
 			)
 		)
+		(property "LCSC" ""
+			(at 0 0 0)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "2ef5f2a1-ffa1-47d6-8297-421d64049e8a")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
 		(property ki_fp_filters "Pin* Test*")
 		(path "/9b1c46d3-e733-408c-acd9-20081c1f71a8")
 		(sheetname "Root")
 		(sheetfile "phone_pcb.kicad_sch")
-		(attr exclude_from_pos_files)
+		(attr exclude_from_pos_files dnp)
 		(fp_circle
 			(center 0 0)
 			(end 0 1.2)
@@ -5110,6 +5422,19 @@
 			(effects
 				(font
 					(size 1.27 1.27)
+					(thickness 0.15)
+				)
+			)
+		)
+		(property "LCSC" "C1525"
+			(at 0 0 -90)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "fdd839ec-0e07-4a65-8803-dad9ab120a69")
+			(effects
+				(font
+					(size 1 1)
 					(thickness 0.15)
 				)
 			)
@@ -5267,7 +5592,7 @@
 		(descr "RJ12 6P6C horizontal socket, plastic body, tab down, https://cdn.amphenol-icc.com/media/wysiwyg/files/drawing/c-bmj-0082.pdf")
 		(tags "RJ12 connector")
 		(property "Reference" "J2"
-			(at -8.52 -1.16 360)
+			(at -8.52 -1.16 0)
 			(layer "F.SilkS")
 			(uuid "55a4f532-c22e-49dd-ae7f-a284953955ab")
 			(effects
@@ -5278,7 +5603,7 @@
 			)
 		)
 		(property "Value" "RJ11"
-			(at -0.5 12.5 360)
+			(at -0.5 12.5 0)
 			(layer "F.Fab")
 			(uuid "fd751e80-9518-455f-95fb-29c5ddc1921f")
 			(effects
@@ -5323,6 +5648,19 @@
 			(effects
 				(font
 					(size 1.27 1.27)
+					(thickness 0.15)
+				)
+			)
+		)
+		(property "LCSC" "C189748"
+			(at 0 0 0)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "e40c2a3a-dae8-4654-b063-b769e9de47d8")
+			(effects
+				(font
+					(size 1 1)
 					(thickness 0.15)
 				)
 			)
@@ -5712,6 +6050,20 @@
 				(justify mirror)
 			)
 		)
+		(property "LCSC" "C1525"
+			(at 0 0 -90)
+			(unlocked yes)
+			(layer "B.Fab")
+			(hide yes)
+			(uuid "6577717e-e7e5-42b3-b2ac-9cfaf5c801a8")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+				(justify mirror)
+			)
+		)
 		(property ki_fp_filters "C_*")
 		(path "/658987a0-cdb3-42a5-bda4-3d79216f3934")
 		(sheetname "Root")
@@ -5926,6 +6278,20 @@
 			(effects
 				(font
 					(size 1.27 1.27)
+					(thickness 0.15)
+				)
+				(justify mirror)
+			)
+		)
+		(property "LCSC" "C25503128"
+			(at 0 0 180)
+			(unlocked yes)
+			(layer "B.Fab")
+			(hide yes)
+			(uuid "ccebc720-515e-4f37-bd7a-b60065d5c4fd")
+			(effects
+				(font
+					(size 1 1)
 					(thickness 0.15)
 				)
 				(justify mirror)

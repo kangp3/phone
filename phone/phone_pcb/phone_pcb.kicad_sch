@@ -4567,6 +4567,15 @@
 				(hide yes)
 			)
 		)
+		(property "LCSC" "C7171"
+			(at 125.73 91.44 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "2"
 			(uuid "7bdde02f-e4bc-4b79-9e41-e66099f1643b")
 		)
@@ -4627,6 +4636,15 @@
 		)
 		(property "Description" "Single-Ended Analog-Input 24-Bit, 96-kHz Stereo A/D Converter"
 			(at 180.34 56.642 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "LCSC" "C2866894"
+			(at 179.07 74.93 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -4710,7 +4728,7 @@
 		(exclude_from_sim no)
 		(in_bom yes)
 		(on_board yes)
-		(dnp no)
+		(dnp yes)
 		(fields_autoplaced yes)
 		(uuid "182de4a9-ab86-45dd-94c2-64dbec8126d9")
 		(property "Reference" "TP2"
@@ -4748,6 +4766,15 @@
 			)
 		)
 		(property "Description" "test point"
+			(at 167.64 30.48 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "LCSC" ""
 			(at 167.64 30.48 0)
 			(effects
 				(font
@@ -4820,6 +4847,15 @@
 				(hide yes)
 			)
 		)
+		(property "LCSC" "C1525"
+			(at 157.48 58.42 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "1"
 			(uuid "380c2f9e-c785-4876-bb27-2e9630e34a11")
 		)
@@ -4842,7 +4878,7 @@
 		(exclude_from_sim no)
 		(in_bom yes)
 		(on_board yes)
-		(dnp no)
+		(dnp yes)
 		(fields_autoplaced yes)
 		(uuid "1df21b3e-f03a-4a8f-8cec-b77da425617e")
 		(property "Reference" "TP8"
@@ -4882,6 +4918,15 @@
 			)
 		)
 		(property "Description" "test point"
+			(at 134.62 67.31 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "LCSC" ""
 			(at 134.62 67.31 0)
 			(effects
 				(font
@@ -5020,6 +5065,15 @@
 				(hide yes)
 			)
 		)
+		(property "LCSC" "C437128"
+			(at 151.13 121.92 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "3"
 			(uuid "cd35bb17-9980-4e7f-b581-6decf7731ae1")
 		)
@@ -5048,7 +5102,7 @@
 		(exclude_from_sim no)
 		(in_bom yes)
 		(on_board yes)
-		(dnp no)
+		(dnp yes)
 		(fields_autoplaced yes)
 		(uuid "3635787a-4632-48a8-a192-8634da5529fa")
 		(property "Reference" "TP3"
@@ -5086,6 +5140,15 @@
 			)
 		)
 		(property "Description" "test point"
+			(at 167.64 38.1 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "LCSC" ""
 			(at 167.64 38.1 0)
 			(effects
 				(font
@@ -5159,6 +5222,15 @@
 				(hide yes)
 			)
 		)
+		(property "LCSC" "C189748"
+			(at 50.8 31.75 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "2"
 			(uuid "bfe41f00-2e1a-4a05-ab88-2d268dc3b437")
 		)
@@ -5219,6 +5291,15 @@
 			)
 		)
 		(property "Description" "Unpolarized capacitor"
+			(at 92.71 67.31 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "LCSC" "C15195"
 			(at 92.71 67.31 0)
 			(effects
 				(font
@@ -5314,7 +5395,7 @@
 		(exclude_from_sim no)
 		(in_bom yes)
 		(on_board yes)
-		(dnp no)
+		(dnp yes)
 		(uuid "5b17a215-992c-4818-b01c-057ce4728732")
 		(property "Reference" "TP5"
 			(at 185.928 25.4 90)
@@ -5351,6 +5432,15 @@
 			)
 		)
 		(property "Description" "test point"
+			(at 189.23 30.48 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "LCSC" ""
 			(at 189.23 30.48 0)
 			(effects
 				(font
@@ -5415,6 +5505,15 @@
 			)
 		)
 		(property "Description" "Unpolarized capacitor"
+			(at 157.48 80.01 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "LCSC" "C52923"
 			(at 157.48 80.01 0)
 			(effects
 				(font
@@ -5556,6 +5655,15 @@
 				(hide yes)
 			)
 		)
+		(property "LCSC" "C1525"
+			(at 132.08 38.1 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "1"
 			(uuid "bd6d9335-2e7a-46d3-8a2f-5d3ddebf38a7")
 		)
@@ -5681,6 +5789,15 @@
 			)
 		)
 		(property "Description" "Unpolarized capacitor"
+			(at 157.48 74.93 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "LCSC" "C52923"
 			(at 157.48 74.93 0)
 			(effects
 				(font
@@ -5824,6 +5941,15 @@
 				(hide yes)
 			)
 		)
+		(property "LCSC" "C4328"
+			(at 82.55 38.1 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "2"
 			(uuid "cb7cc707-c026-49d4-a2bc-1c16db300e6b")
 		)
@@ -5846,7 +5972,7 @@
 		(exclude_from_sim no)
 		(in_bom yes)
 		(on_board yes)
-		(dnp no)
+		(dnp yes)
 		(fields_autoplaced yes)
 		(uuid "7e1a8ee8-26cf-4705-a2c4-5d43f8f21f02")
 		(property "Reference" "TP7"
@@ -5886,6 +6012,15 @@
 			)
 		)
 		(property "Description" "test point"
+			(at 86.36 104.14 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "LCSC" ""
 			(at 86.36 104.14 0)
 			(effects
 				(font
@@ -5950,6 +6085,15 @@
 			)
 		)
 		(property "Description" "Unpolarized capacitor"
+			(at 130.81 91.44 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "LCSC" "C1525"
 			(at 130.81 91.44 0)
 			(effects
 				(font
@@ -6046,7 +6190,7 @@
 		(exclude_from_sim no)
 		(in_bom yes)
 		(on_board yes)
-		(dnp no)
+		(dnp yes)
 		(uuid "8c58bc87-8bad-41b1-9f61-98949465327f")
 		(property "Reference" "C12"
 			(at 120.65 36.068 0)
@@ -6085,6 +6229,15 @@
 			)
 		)
 		(property "Description" "Polarized capacitor, US symbol"
+			(at 127 38.1 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "LCSC" ""
 			(at 127 38.1 0)
 			(effects
 				(font
@@ -6163,6 +6316,15 @@
 				(hide yes)
 			)
 		)
+		(property "LCSC" "C11702"
+			(at 125.73 80.01 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "2"
 			(uuid "9ee646f7-0977-408b-af3e-a9a4309fc89e")
 		)
@@ -6185,7 +6347,7 @@
 		(exclude_from_sim no)
 		(in_bom yes)
 		(on_board yes)
-		(dnp no)
+		(dnp yes)
 		(fields_autoplaced yes)
 		(uuid "933e6f15-f434-487e-878a-489b593ca2d5")
 		(property "Reference" "TP1"
@@ -6231,6 +6393,15 @@
 				(hide yes)
 			)
 		)
+		(property "LCSC" ""
+			(at 167.64 22.86 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "1"
 			(uuid "a8dea6f9-0a6c-4ba6-91c0-9d15f5718a00")
 		)
@@ -6250,7 +6421,7 @@
 		(exclude_from_sim no)
 		(in_bom yes)
 		(on_board yes)
-		(dnp no)
+		(dnp yes)
 		(fields_autoplaced yes)
 		(uuid "9b1c46d3-e733-408c-acd9-20081c1f71a8")
 		(property "Reference" "TP6"
@@ -6288,6 +6459,15 @@
 			)
 		)
 		(property "Description" "test point"
+			(at 189.23 38.1 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "LCSC" ""
 			(at 189.23 38.1 0)
 			(effects
 				(font
@@ -6354,6 +6534,15 @@
 			)
 		)
 		(property "Description" "Polarized capacitor, US symbol"
+			(at 146.05 91.44 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "LCSC" "C7171"
 			(at 146.05 91.44 0)
 			(effects
 				(font
@@ -6562,6 +6751,15 @@
 				(hide yes)
 			)
 		)
+		(property "LCSC" "C7171"
+			(at 152.4 58.42 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "2"
 			(uuid "05bd3fcd-371b-424d-bc11-37798b0090f3")
 		)
@@ -6753,6 +6951,15 @@
 			)
 		)
 		(property "Description" "Unpolarized capacitor"
+			(at 196.85 58.42 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "LCSC" "C1525"
 			(at 196.85 58.42 0)
 			(effects
 				(font
@@ -6980,7 +7187,7 @@
 		(exclude_from_sim no)
 		(in_bom yes)
 		(on_board yes)
-		(dnp no)
+		(dnp yes)
 		(fields_autoplaced yes)
 		(uuid "c0fa231e-4b31-4c68-b6e5-824799af533f")
 		(property "Reference" "TP4"
@@ -7018,6 +7225,15 @@
 			)
 		)
 		(property "Description" "test point"
+			(at 189.23 22.86 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "LCSC" ""
 			(at 189.23 22.86 0)
 			(effects
 				(font
@@ -7111,7 +7327,7 @@
 		(exclude_from_sim no)
 		(in_bom yes)
 		(on_board yes)
-		(dnp no)
+		(dnp yes)
 		(fields_autoplaced yes)
 		(uuid "c2fc6a6c-6dd1-4455-aafa-8403e9b88da8")
 		(property "Reference" "U1"
@@ -7152,6 +7368,15 @@
 		)
 		(property "Description" "+3.3V / +5.0V Low Power Ringing SLIC"
 			(at 132.08 77.724 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "LCSC" ""
+			(at 110.49 57.15 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7262,6 +7487,15 @@
 				(hide yes)
 			)
 		)
+		(property "LCSC" "C1525"
+			(at 151.13 91.44 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "1"
 			(uuid "c00a52c4-311c-47f9-a37c-f31d3781d6b8")
 		)
@@ -7324,6 +7558,15 @@
 			)
 		)
 		(property "Description" "expansion header for Raspberry Pi 2 & 3"
+			(at 50.8 83.82 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "LCSC" "C25503128"
 			(at 50.8 83.82 0)
 			(effects
 				(font
@@ -7507,6 +7750,15 @@
 			)
 		)
 		(property "Description" "Polarized capacitor, US symbol"
+			(at 191.77 58.42 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "LCSC" "C7171"
 			(at 191.77 58.42 0)
 			(effects
 				(font
