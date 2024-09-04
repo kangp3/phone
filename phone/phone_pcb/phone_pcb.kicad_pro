@@ -37,9 +37,9 @@
         "other_text_thickness": 0.15,
         "other_text_upright": false,
         "pads": {
-          "drill": 1.0,
-          "height": 2.0,
-          "width": 2.0
+          "drill": 0.762,
+          "height": 1.524,
+          "width": 1.524
         },
         "silk_line_width": 0.1,
         "silk_text_italic": false,
@@ -48,7 +48,7 @@
         "silk_text_thickness": 0.1,
         "silk_text_upright": false,
         "zones": {
-          "min_clearance": 0.5
+          "min_clearance": 0.3
         }
       },
       "diff_pair_dimensions": [
@@ -58,35 +58,7 @@
           "width": 0.0
         }
       ],
-      "drc_exclusions": [
-        "clearance|63700000|88025000|b713b541-3ad0-4649-9dd6-db7344dd7e82|d334aa42-47f4-495c-bd67-078f55ed1e32",
-        "clearance|64100000|81025000|b4f005e3-1b48-41ae-bd76-16d78200b9fe|9a691841-5489-4e85-ade7-ec77429211b5",
-        "clearance|64350000|88025000|d334aa42-47f4-495c-bd67-078f55ed1e32|7994d0fc-f506-4a8c-a936-cb54d5198cb1",
-        "clearance|64750000|81025000|b8bca949-3ae8-4ce8-8185-55afebfeae44|b4f005e3-1b48-41ae-bd76-16d78200b9fe",
-        "clearance|65000000|88025000|7994d0fc-f506-4a8c-a936-cb54d5198cb1|4c507bb5-3802-438b-be50-7bd6f821367c",
-        "clearance|65400000|81025000|5a47f3eb-4a88-4963-a7bf-ee545c5eab3b|b8bca949-3ae8-4ce8-8185-55afebfeae44",
-        "clearance|65650000|88025000|4c507bb5-3802-438b-be50-7bd6f821367c|042fd799-86c0-4676-89a8-062ad559d961",
-        "clearance|66050000|81025000|c14419de-9571-4074-962c-e66570431d38|5a47f3eb-4a88-4963-a7bf-ee545c5eab3b",
-        "clearance|66300000|88025000|042fd799-86c0-4676-89a8-062ad559d961|9e9e052b-7d07-4044-834c-dec130ef9500",
-        "clearance|66700000|81025000|6fc234b0-97df-411c-919f-6da16ffcaeca|c14419de-9571-4074-962c-e66570431d38",
-        "clearance|66950000|88025000|9e9e052b-7d07-4044-834c-dec130ef9500|e6016ab0-239e-4069-a754-59b4204de6df",
-        "clearance|67350000|81025000|b681fe5f-d308-445c-80de-d75b93696303|6fc234b0-97df-411c-919f-6da16ffcaeca",
-        "clearance|67600000|88025000|e6016ab0-239e-4069-a754-59b4204de6df|db070709-4223-4239-ad7a-da8be893b600",
-        "clearance|68000000|81025000|8678ad3b-ae21-44c5-bb64-bc3b48e737a0|b681fe5f-d308-445c-80de-d75b93696303",
-        "clearance|68250000|88025000|db070709-4223-4239-ad7a-da8be893b600|f390dc70-1165-4172-9dc2-47f49644b487",
-        "clearance|68650000|81025000|f7120f3d-7b01-49e0-9a27-a752d191374a|8678ad3b-ae21-44c5-bb64-bc3b48e737a0",
-        "clearance|68900000|88025000|f390dc70-1165-4172-9dc2-47f49644b487|b8dd9df0-88fe-4548-acd4-452960d46299",
-        "clearance|69300000|81025000|0f9955bc-e349-4ced-8cf0-fbf15ae8d08b|f7120f3d-7b01-49e0-9a27-a752d191374a",
-        "starved_thermal|53960000|73100000|a1922cbb-628a-495a-9cb2-bf7ea1fdeaf4|0ff4637b-afa0-4ab5-b590-2dbaa8b106e0|B.Cu",
-        "starved_thermal|53960000|80720000|a1922cbb-628a-495a-9cb2-bf7ea1fdeaf4|d5e5faf4-d774-4eba-a8e9-1a7f974f8518|B.Cu",
-        "starved_thermal|53960000|93420000|8eb5b8b1-75fe-4675-b688-b69c50c7dc27|591e0a80-fdc9-44db-a4bc-95456826b5bb|F.Cu",
-        "starved_thermal|53960000|93420000|a1922cbb-628a-495a-9cb2-bf7ea1fdeaf4|591e0a80-fdc9-44db-a4bc-95456826b5bb|B.Cu",
-        "starved_thermal|53960000|98500000|8eb5b8b1-75fe-4675-b688-b69c50c7dc27|9e47d72b-a6f9-45fb-b567-88d28701271b|F.Cu",
-        "starved_thermal|53960000|98500000|a1922cbb-628a-495a-9cb2-bf7ea1fdeaf4|9e47d72b-a6f9-45fb-b567-88d28701271b|B.Cu",
-        "unconnected_items|53960000|57860000|c82c1d51-42f1-4b18-8665-cfcd371c464d|1a735037-0048-4b80-91e9-726fb20a8fce",
-        "unconnected_items|57912503|66029500|8eb5b8b1-75fe-4675-b688-b69c50c7dc27|8eb5b8b1-75fe-4675-b688-b69c50c7dc27",
-        "unconnected_items|61840000|57860000|f05ec49c-b7d0-4c38-8076-ddfaa6101eb5|4eeedcae-7c88-40d1-97e2-a9554fe32324"
-      ],
+      "drc_exclusions": [],
       "meta": {
         "version": 2
       },
@@ -524,15 +496,15 @@
       },
       {
         "netclass": "Power",
+        "pattern": "\\+.*V"
+      },
+      {
+        "netclass": "Power",
         "pattern": ".*RING.*"
       },
       {
         "netclass": "Power",
         "pattern": ".*TIP.*"
-      },
-      {
-        "netclass": "Power",
-        "pattern": "\\+.*V"
       }
     ]
   },
@@ -541,8 +513,8 @@
       "gencad": "",
       "idf": "",
       "netlist": "",
-      "plot": "",
-      "pos_files": "",
+      "plot": "./mashed_carrots",
+      "pos_files": "picknplaceyay/",
       "specctra_dsn": "",
       "step": "",
       "svg": "",
@@ -552,7 +524,7 @@
   },
   "schematic": {
     "annotate_start_num": 0,
-    "bom_export_filename": "",
+    "bom_export_filename": "phone_pcb.csv",
     "bom_fmt_presets": [],
     "bom_fmt_settings": {
       "field_delimiter": ",",
@@ -565,7 +537,7 @@
     },
     "bom_presets": [],
     "bom_settings": {
-      "exclude_dnp": false,
+      "exclude_dnp": true,
       "fields_ordered": [
         {
           "group_by": false,
@@ -611,22 +583,22 @@
         },
         {
           "group_by": false,
-          "label": "Description",
-          "name": "Description",
-          "show": false
+          "label": "LCSC",
+          "name": "LCSC",
+          "show": true
         },
         {
           "group_by": false,
-          "label": "LCSC",
-          "name": "LCSC",
-          "show": false
+          "label": "Description",
+          "name": "Description",
+          "show": true
         }
       ],
       "filter_string": "",
       "group_symbols": true,
       "name": "",
-      "sort_asc": false,
-      "sort_field": "${DNP}"
+      "sort_asc": true,
+      "sort_field": "Reference"
     },
     "connection_grid_size": 50.0,
     "drawing": {
