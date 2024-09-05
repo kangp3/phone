@@ -10,7 +10,7 @@ pub fn try_register_shk() -> Result<InputPin, ()> {
 
     dbg!("Registering SHK handler...");
     let gpio = Gpio::new().unwrap();
-    let mut shk = gpio.get(27).unwrap().into_input();
+    let mut shk = gpio.get(15).unwrap().into_input();
     shk.set_async_interrupt(
         Trigger::FallingEdge,
         Some(Duration::from_millis(10)),

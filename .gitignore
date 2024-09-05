@@ -1,4 +1,5 @@
 goertzel/target
+goertzel/alsa-sys/target
 
 # KiCAD
 **/*-backups

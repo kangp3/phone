@@ -31,7 +31,7 @@ speaker-test -t sine -f 350 -l0
 speaker-test -t sine -f 440 -l0
 ```
 
-### Cross-compile to Rasppi
+### Cross-compile to Rasppi (old stinky cross-rs way)
 ```
 cross build --target=arm-unknown-linux-gnueabihf
 ```
@@ -59,6 +59,15 @@ sudo cp .asoundrc /root
 ### Take down Wi-Fi
 ```
 sudo nmcli connection delete 'Recurse Center'; sudo reboot
+```
+
+### Install cross-compiler
+```
+brew tap messense/macos-cross-toolchains
+brew install arm-unknown-linux-gnueabihf
+```
+```
+cargo build --release --target=arm-unknown-linux-gnueabihf
 ```
 
 ## Relevant Material
