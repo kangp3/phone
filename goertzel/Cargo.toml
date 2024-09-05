@@ -3,6 +3,9 @@ name = "goertzel"
 version = "0.1.0"
 edition = "2021"
 
+[patch.crates-io]
+alsa-sys = { path = 'alsa-sys' }
+
 [dependencies]
 cpal = "0.15.3"
 itertools = "0.13.0"
