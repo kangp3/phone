@@ -42,12 +42,24 @@ async fn main() {
     // TODO: Delete debugs
     dbg!(&pass);
 
+    #[cfg(target_os = "none")]
     let status = Command::new("nmcli")
         .args(&["--wait", "20"])
         .args(&["device", "wifi"])
         .arg("connect")
         .arg(&ssid)
         .args(&["password", &pass])
+        .spawn()
+        .unwrap()
+        .wait()
+        .await
+        .unwrap();
+    #[cfg(target_os = "macos")]
+    let status = Command::new("networksetup")
+        .arg("-setairportnetwork")
+        .arg("en0")
+        .arg(&ssid)
+        .arg(&pass)
         .spawn()
         .unwrap()
         .wait()
