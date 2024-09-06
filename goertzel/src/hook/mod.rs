@@ -1,8 +1,8 @@
-#[cfg(target_os = "none")]
+#[cfg(target_os = "linux")]
 #[path = "rpi.rs"]
 mod hooks;
 
-#[cfg(not(target_os = "none"))]
+#[cfg(target_os = "macos")]
 #[path = "notpi.rs"]
 mod hooks;
 

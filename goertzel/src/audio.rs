@@ -7,10 +7,10 @@ use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver};
 
 pub struct ItMyMic {
     pub samples_ch: UnboundedReceiver<f32>,
-    _stream: Stream,
+    _stream: Option<Stream>,
 }
 
-pub fn get_input_samples(sample_rate: u32) -> ItMyMic {
+pub fn get_mic_samples(sample_rate: u32) -> ItMyMic {
     let (send_ch, rcv_ch) = unbounded_channel();
 
     let host = cpal::default_host();
@@ -51,6 +51,32 @@ pub fn get_input_samples(sample_rate: u32) -> ItMyMic {
 
     ItMyMic{
         samples_ch: rcv_ch,
-        _stream: in_stream,
+        _stream: Some(in_stream),
+    }
+}
+
+#[cfg(feature = "wav")]
+pub fn get_wav_samples(fname: String) -> ItMyMic {
+    let (send_ch, rcv_ch) = unbounded_channel();
+
+    let reader = hound::WavReader::open(fname).unwrap();
+    let reader_bits = reader.spec().bits_per_sample;
+    let samples = reader.into_samples::<i32>();
+    let mut is_l_channel = false;
+    for s in samples {
+        if is_l_channel {
+            match s {
+                Ok(s) => {
+                    send_ch.send(s as f32/2.0f32.powi(reader_bits.into())).unwrap();
+                },
+                Err(_) => break,
+            }
+        }
+        is_l_channel = !is_l_channel;
+    }
+
+    ItMyMic{
+        samples_ch: rcv_ch,
+        _stream: None,
     }
 }

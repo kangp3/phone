@@ -1,8 +1,9 @@
-
 use std::{panic, process};
 
 use goertzel::{self, hook};
 use tokio::process::Command;
+#[cfg(feature = "wav")]
+use pico_args::Arguments;
 
 
 const SAMPLE_RATE: u32 = 48000;
@@ -10,6 +11,9 @@ const SAMPLE_RATE: u32 = 48000;
 
 #[tokio::main]
 async fn main() {
+    #[cfg(feature = "wav")]
+    let fname: Option<String> = Arguments::from_env().opt_value_from_str("-f").unwrap();
+
     let default_hook = panic::take_hook();
     panic::set_hook(Box::new(move |v| {
         default_hook(v);
@@ -18,7 +22,16 @@ async fn main() {
 
     let _pin = hook::try_register_shk().unwrap();
 
-    let mic = goertzel::audio::get_input_samples(SAMPLE_RATE);
+    #[cfg(feature = "wav")]
+    let mic = {
+        if let Some(fname) = fname {
+            goertzel::audio::get_wav_samples(fname)
+        } else {
+            goertzel::audio::get_mic_samples(SAMPLE_RATE)
+        }
+    };
+    #[cfg(not(feature = "wav"))]
+    let mic = goertzel::audio::get_mic_samples(SAMPLE_RATE);
     dbg!("Got mic, listening...");
 
     let mut ssid = String::new();
@@ -42,7 +55,7 @@ async fn main() {
     // TODO: Delete debugs
     dbg!(&pass);
 
-    #[cfg(target_os = "none")]
+    #[cfg(target_os = "linux")]
     let status = Command::new("nmcli")
         .args(&["--wait", "20"])
         .args(&["device", "wifi"])
