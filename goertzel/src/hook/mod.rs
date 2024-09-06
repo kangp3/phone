@@ -1,9 +1,9 @@
 #[cfg(target_os = "none")]
-mod rpi;
-#[cfg(target_os = "none")]
-pub use rpi::*;
+#[path = "rpi.rs"]
+mod hooks;
 
 #[cfg(not(target_os = "none"))]
-mod notpi;
-#[cfg(not(target_os = "none"))]
-pub use notpi::*;
+#[path = "notpi.rs"]
+mod hooks;
+
+pub use hooks::*;
