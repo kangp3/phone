@@ -5,7 +5,7 @@ use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{SampleFormat, Stream, SupportedStreamConfig};
 use tokio::sync::broadcast::{channel, Receiver, Sender};
 
-const SAMPLE_BUF_SIZE: usize = 4096;
+const SAMPLE_BUF_SIZE: usize = 65536;
 
 pub struct ItMyMic {
     pub samples_tx: Sender<f32>,

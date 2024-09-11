@@ -26,7 +26,7 @@ impl State {
         Self::default()
     }
 
-    fn poosh(self, dig: u8) -> (Self, Vec<char>) {
+    fn poosh(self, dig: u8) -> Result<(State, Vec<char>), String> {
         let mut c = Vec::new();
         let next = match self {
             _ if dig == SEXTILE => Self::default(),
@@ -43,7 +43,7 @@ impl State {
                 if let Some(ch) = self.emit() {
                     c.push(ch);
                 }
-                let (s, mut chs) = Self::default().poosh(dig);
+                let (s, mut chs) = Self::default().poosh(dig)?;
                 c.append(&mut chs);
                 s
             }
@@ -80,9 +80,9 @@ impl State {
                 Self::default()
             }
 
-            _ => panic!("uh oh stinky state"),
+            _ => return Err(String::from("uh oh stinky state")),
         };
-        (next, c)
+        Ok((next, c))
     }
 
     fn emit(self) -> Option<char> {
@@ -150,11 +150,21 @@ pub fn ding(sample_ch: Receiver<f32>) -> UnboundedReceiver<char> {
     let (send_ch, rcv_ch) = unbounded_channel();
     let mut state = State::new();
     tokio::spawn(async move {
-        while let Some(dig) = digs_ch.recv().await {
-            let pooshed = state.poosh(dig);
-            state = pooshed.0;
-            for c in pooshed.1.into_iter() {
-                send_ch.send(c).unwrap();
+        'eater: while let Some(dig) = digs_ch.recv().await {
+            match state.poosh(dig) {
+                Ok((new_state, chars)) => {
+                    state = new_state;
+                    for c in chars.into_iter() {
+                        if let Err(e) = send_ch.send(c) {
+                            dbg!(e);
+                            break 'eater;
+                        };
+                    }
+                },
+                Err(e) => {
+                    dbg!(e);
+                    break;
+                }
             }
         }
     });
