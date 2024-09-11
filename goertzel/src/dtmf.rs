@@ -81,38 +81,48 @@ pub fn goertzelme(mut sample_channel: Receiver<f32>) -> UnboundedReceiver<u8> {
     let (send_ch, rcv_ch) = unbounded_channel();
     tokio::spawn(async move {
         loop {
-            let sample = sample_channel.recv().await.unwrap();
-            if sample_idx == WINDOW_INTERVAL {
-                let goertzeler = &goertzelers[goertzel_idx];
-                let sorted_mags: Vec<_> = goertzeler.goertzel_me()
-                    .into_iter()
-                    .enumerate()
-                    .sorted_by(|a, b| b.1.partial_cmp(&a.1).unwrap())
-                    .collect();
-                let bg_sum = sorted_mags[2..].iter().map(|(_, mag)| mag).sum::<f64>();
-                let digit = match sorted_mags[0..2] {
-                    _ if sorted_mags[1].1 < bg_sum * THRESHOLD_MAG => NULL,
-                    [(3, _), (5, _)] |
-                    [(5, _), (3, _)] => 0,
-                    [(f1, _), (f2, _)] if f2 > 3 && f1 < 4 => (f1*3 + f2-3).try_into().unwrap(),
-                    [(f1, _), (f2, _)] if f1 > 3 && f2 < 4 => (f2*3 + f1-3).try_into().unwrap(),
-                    _ => NULL,
-                };
-                if digit != NULL && digit != last_digit {
-                    send_ch.send(digit).unwrap();
-                }
-                last_digit = digit;
+            match sample_channel.recv().await {
+                Ok(sample) => {
+                    if sample_idx == WINDOW_INTERVAL {
+                        let goertzeler = &goertzelers[goertzel_idx];
+                        let sorted_mags: Vec<_> = goertzeler.goertzel_me()
+                            .into_iter()
+                            .enumerate()
+                            .sorted_by(|a, b| b.1.partial_cmp(&a.1).unwrap())
+                            .collect();
+                        let bg_sum = sorted_mags[2..].iter().map(|(_, mag)| mag).sum::<f64>();
+                        let digit = match sorted_mags[0..2] {
+                            _ if sorted_mags[1].1 < bg_sum * THRESHOLD_MAG => NULL,
+                            [(3, _), (5, _)] |
+                            [(5, _), (3, _)] => 0,
+                            [(f1, _), (f2, _)] if f2 > 3 && f1 < 4 => (f1*3 + f2-3).try_into().unwrap(),
+                            [(f1, _), (f2, _)] if f1 > 3 && f2 < 4 => (f2*3 + f1-3).try_into().unwrap(),
+                            _ => NULL,
+                        };
+                        if digit != NULL && digit != last_digit {
+                            if let Err(e) = send_ch.send(digit) {
+                                dbg!(e);
+                                break;
+                            }
+                        }
+                        last_digit = digit;
 
-                goertzelers[goertzel_idx] = Goertzeler::new();
+                        goertzelers[goertzel_idx] = Goertzeler::new();
 
-                goertzel_idx += 1;
-                if goertzel_idx == goertzelers.len() {
-                    goertzel_idx = 0;
-                }
-                sample_idx = 0;
-            }
-            for goertzeler in goertzelers.iter_mut() {
-                goertzeler.push(sample as f64);
+                        goertzel_idx += 1;
+                        if goertzel_idx == goertzelers.len() {
+                            goertzel_idx = 0;
+                        }
+                        sample_idx = 0;
+                    }
+                    for goertzeler in goertzelers.iter_mut() {
+                        goertzeler.push(sample as f64);
+                    }
+                },
+                Err(e) => {
+                    dbg!(e);
+                    break;
+                },
             }
 
             sample_idx += 1;

@@ -67,7 +67,7 @@ pub fn get_mic_samples_with_outfile(sample_rate: u32, fname: String) -> ItMyMic 
     let send_ch2 = send_ch.clone();
 
     let mut writer = hound::WavWriter::create(fname, hound::WavSpec{
-        channels: 2,
+        channels: 1,
         sample_rate,
         bits_per_sample: 32,
         sample_format: hound::SampleFormat::Float,
@@ -77,8 +77,14 @@ pub fn get_mic_samples_with_outfile(sample_rate: u32, fname: String) -> ItMyMic 
         loop {
             match samples_rx.recv().await {
                 Ok(sample) => {
-                    writer.write_sample(sample).unwrap();
-                    send_ch.send(sample).unwrap();
+                    if let Err(e) = writer.write_sample(sample / 2.0_f32.powf(16.0)) {
+                        dbg!(e);
+                        break;
+                    }
+                    if let Err(e) = send_ch.send(sample) {
+                        dbg!(e);
+                        break;
+                    }
                 },
                 Err(e) => {
                     dbg!(e);
