@@ -7,6 +7,7 @@ use itertools::Itertools;
 use ringbuf::storage::Heap;
 use ringbuf::SharedRb;
 use ringbuf::traits::{RingBuffer, Consumer};
+use tokio::sync::broadcast::{Receiver};
 use tokio::sync::mpsc::{UnboundedReceiver, unbounded_channel};
 
 
@@ -68,7 +69,7 @@ impl<'a> Goertzeler<'a> {
 }
 
 
-pub fn goertzelme(mut sample_channel: UnboundedReceiver<f32>) -> UnboundedReceiver<u8> {
+pub fn goertzelme(mut sample_channel: Receiver<f32>) -> UnboundedReceiver<u8> {
     let mut sample_idx = 0;
     let mut goertzel_idx = 0;
     let mut goertzelers: Vec<_> = (0..(CHUNK_SIZE / WINDOW_INTERVAL))
@@ -79,7 +80,8 @@ pub fn goertzelme(mut sample_channel: UnboundedReceiver<f32>) -> UnboundedReceiv
 
     let (send_ch, rcv_ch) = unbounded_channel();
     tokio::spawn(async move {
-        while let Some(sample) = sample_channel.recv().await {
+        loop {
+            let sample = sample_channel.recv().await.unwrap();
             if sample_idx == WINDOW_INTERVAL {
                 let goertzeler = &goertzelers[goertzel_idx];
                 let sorted_mags: Vec<_> = goertzeler.goertzel_me()

@@ -3,15 +3,19 @@ use std::time::Duration;
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{SampleFormat, Stream, SupportedStreamConfig};
-use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver};
+use tokio::sync::broadcast::{channel, Receiver, Sender};
+
+const SAMPLE_BUF_SIZE: usize = 4096;
 
 pub struct ItMyMic {
-    pub samples_ch: UnboundedReceiver<f32>,
+    pub samples_tx: Sender<f32>,
+    pub samples_rx: Receiver<f32>,
     _stream: Option<Stream>,
 }
 
 pub fn get_mic_samples(sample_rate: u32) -> ItMyMic {
-    let (send_ch, rcv_ch) = unbounded_channel();
+    let (send_ch, rcv_ch) = channel(SAMPLE_BUF_SIZE);
+    let send_ch2 = send_ch.clone();
 
     let host = cpal::default_host();
 
@@ -50,33 +54,74 @@ pub fn get_mic_samples(sample_rate: u32) -> ItMyMic {
     in_stream.play().unwrap();
 
     ItMyMic{
-        samples_ch: rcv_ch,
+        samples_tx: send_ch2,
+        samples_rx: rcv_ch,
         _stream: Some(in_stream),
     }
 }
 
 #[cfg(feature = "wav")]
+pub fn get_mic_samples_with_outfile(sample_rate: u32, fname: String) -> ItMyMic {
+    let mic = get_mic_samples(sample_rate);
+    let (send_ch, recv_ch) = channel(SAMPLE_BUF_SIZE);
+    let send_ch2 = send_ch.clone();
+
+    let mut writer = hound::WavWriter::create(fname, hound::WavSpec{
+        channels: 2,
+        sample_rate,
+        bits_per_sample: 32,
+        sample_format: hound::SampleFormat::Float,
+    }).unwrap();
+    let mut samples_rx = mic.samples_tx.subscribe();
+    tokio::spawn(async move {
+        loop {
+            match samples_rx.recv().await {
+                Ok(sample) => {
+                    writer.write_sample(sample).unwrap();
+                    send_ch.send(sample).unwrap();
+                },
+                Err(e) => {
+                    dbg!(e);
+                    break;
+                }
+            }
+        }
+        writer.finalize().unwrap();
+    });
+
+    ItMyMic{
+        samples_tx: send_ch2,
+        samples_rx: recv_ch,
+        _stream: mic._stream,
+    }
+}
+
+#[cfg(feature = "wav")]
 pub fn get_wav_samples(fname: String) -> ItMyMic {
-    let (send_ch, rcv_ch) = unbounded_channel();
+    let (send_ch, rcv_ch) = channel(SAMPLE_BUF_SIZE);
+    let send_ch2 = send_ch.clone();
 
     let reader = hound::WavReader::open(fname).unwrap();
     let reader_bits = reader.spec().bits_per_sample;
     let samples = reader.into_samples::<i32>();
     let mut is_l_channel = false;
-    for s in samples {
-        if is_l_channel {
-            match s {
-                Ok(s) => {
-                    send_ch.send(s as f32/2.0f32.powi(reader_bits.into())).unwrap();
-                },
-                Err(_) => break,
+    tokio::spawn(async move {
+        for s in samples {
+            if is_l_channel {
+                match s {
+                    Ok(s) => {
+                        send_ch.send(s as f32/2.0f32.powi(reader_bits.into())).unwrap();
+                    },
+                    Err(_) => break,
+                }
             }
+            is_l_channel = !is_l_channel;
         }
-        is_l_channel = !is_l_channel;
-    }
+    });
 
     ItMyMic{
-        samples_ch: rcv_ch,
+        samples_tx: send_ch2,
+        samples_rx: rcv_ch,
         _stream: None,
     }
 }

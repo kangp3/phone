@@ -1,4 +1,5 @@
-use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver};
+use tokio::sync::broadcast::Receiver;
+use tokio::sync::mpsc::{UnboundedReceiver, unbounded_channel};
 
 use crate::dtmf::{goertzelme, NULL, OCTOTHORPE, SEXTILE};
 
@@ -143,7 +144,7 @@ impl State {
     }
 }
 
-pub fn ding(sample_ch: UnboundedReceiver<f32>) -> UnboundedReceiver<char> {
+pub fn ding(sample_ch: Receiver<f32>) -> UnboundedReceiver<char> {
     let mut digs_ch = goertzelme(sample_ch);
 
     let (send_ch, rcv_ch) = unbounded_channel();
