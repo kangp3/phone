@@ -62,6 +62,12 @@ pub fn get_mic_samples(sample_rate: u32) -> ItMyMic {
 
 #[cfg(feature = "wav")]
 pub fn get_mic_samples_with_outfile(sample_rate: u32, fname: String) -> ItMyMic {
+    use std::error::Error;
+    use std::fs::File;
+    use std::io::BufWriter;
+
+    use hound::WavWriter;
+
     let mic = get_mic_samples(sample_rate);
     let (send_ch, recv_ch) = channel(SAMPLE_BUF_SIZE);
     let send_ch2 = send_ch.clone();
@@ -72,25 +78,18 @@ pub fn get_mic_samples_with_outfile(sample_rate: u32, fname: String) -> ItMyMic 
         bits_per_sample: 32,
         sample_format: hound::SampleFormat::Float,
     }).unwrap();
-    let mut samples_rx = mic.samples_tx.subscribe();
-    tokio::spawn(async move {
+    let samples_rx = mic.samples_tx.subscribe();
+
+    async fn tee_wav_task(mut samples_rx: Receiver<f32>, writer: &mut WavWriter<BufWriter<File>>, send_ch: Sender<f32>) -> Result<(), Box<dyn Error>> {
         loop {
-            match samples_rx.recv().await {
-                Ok(sample) => {
-                    if let Err(e) = writer.write_sample(sample / 2.0_f32.powf(16.0)) {
-                        dbg!(e);
-                        break;
-                    }
-                    if let Err(e) = send_ch.send(sample) {
-                        dbg!(e);
-                        break;
-                    }
-                },
-                Err(e) => {
-                    dbg!(e);
-                    break;
-                }
-            }
+            let sample = samples_rx.recv().await?;
+            writer.write_sample(sample / 2.0_f32.powf(16.0))?;
+            send_ch.send(sample)?;
+        }
+    }
+    tokio::spawn(async move {
+        if let Err(e) = tee_wav_task(samples_rx, &mut writer, send_ch).await {
+            dbg!(e);
         }
         writer.finalize().unwrap();
     });
