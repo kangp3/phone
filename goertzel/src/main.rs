@@ -49,7 +49,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let mut ssid = String::new();
     let mut pass = String::new();
-    let mut chars_ch = goertzel::deco::ding(mic.samples_rx);
+    let mut chars_ch = goertzel::deco::ding(mic.samples_ch);
     while let Some(c) = chars_ch.recv().await {
         if c == '\0' {
             break;

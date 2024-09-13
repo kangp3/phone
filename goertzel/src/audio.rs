@@ -3,19 +3,19 @@ use std::time::Duration;
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{SampleFormat, Stream, SupportedStreamConfig};
-use tokio::sync::broadcast::{channel, Receiver, Sender};
+use tokio::sync::mpsc::{channel, Receiver};
+
 
 const SAMPLE_BUF_SIZE: usize = 65536;
 
+
 pub struct ItMyMic {
-    pub samples_tx: Sender<f32>,
-    pub samples_rx: Receiver<f32>,
+    pub samples_ch: Receiver<f32>,
     _stream: Option<Stream>,
 }
 
 pub fn get_mic_samples(sample_rate: u32) -> ItMyMic {
     let (send_ch, rcv_ch) = channel(SAMPLE_BUF_SIZE);
-    let send_ch2 = send_ch.clone();
 
     let host = cpal::default_host();
 
@@ -42,7 +42,7 @@ pub fn get_mic_samples(sample_rate: u32) -> ItMyMic {
         move |data: &[f32], _: &cpal::InputCallbackInfo| {
             for sample in data.iter() {
                 if playback_idx % 2 == 0 {
-                    send_ch.send(*sample * 2.0_f32.powf(16.0)).unwrap();
+                    send_ch.try_send(*sample * 2.0_f32.powf(16.0)).unwrap();
                 }
                 playback_idx += 1;
             }
@@ -54,23 +54,17 @@ pub fn get_mic_samples(sample_rate: u32) -> ItMyMic {
     in_stream.play().unwrap();
 
     ItMyMic{
-        samples_tx: send_ch2,
-        samples_rx: rcv_ch,
+        samples_ch: rcv_ch,
         _stream: Some(in_stream),
     }
 }
 
 #[cfg(feature = "wav")]
 pub fn get_mic_samples_with_outfile(sample_rate: u32, fname: String) -> ItMyMic {
-    use std::error::Error;
-    use std::fs::File;
-    use std::io::BufWriter;
+    use crate::asyncutil::and_log_err;
 
-    use hound::WavWriter;
-
-    let mic = get_mic_samples(sample_rate);
+    let mut mic = get_mic_samples(sample_rate);
     let (send_ch, recv_ch) = channel(SAMPLE_BUF_SIZE);
-    let send_ch2 = send_ch.clone();
 
     let mut writer = hound::WavWriter::create(fname, hound::WavSpec{
         channels: 1,
@@ -78,55 +72,45 @@ pub fn get_mic_samples_with_outfile(sample_rate: u32, fname: String) -> ItMyMic 
         bits_per_sample: 32,
         sample_format: hound::SampleFormat::Float,
     }).unwrap();
-    let samples_rx = mic.samples_tx.subscribe();
 
-    async fn tee_wav_task(mut samples_rx: Receiver<f32>, writer: &mut WavWriter<BufWriter<File>>, send_ch: Sender<f32>) -> Result<(), Box<dyn Error>> {
-        loop {
-            let sample = samples_rx.recv().await?;
-            writer.write_sample(sample / 2.0_f32.powf(16.0))?;
-            send_ch.send(sample)?;
-        }
-    }
     tokio::spawn(async move {
-        if let Err(e) = tee_wav_task(samples_rx, &mut writer, send_ch).await {
-            dbg!(e);
-        }
+        and_log_err(async {
+            while let Some(sample) = mic.samples_ch.recv().await {
+                writer.write_sample(sample / 2.0_f32.powf(16.0))?;
+                send_ch.try_send(sample)?;
+            }
+            Ok(())
+        }).await;
         writer.finalize().unwrap();
     });
 
     ItMyMic{
-        samples_tx: send_ch2,
-        samples_rx: recv_ch,
+        samples_ch: recv_ch,
         _stream: mic._stream,
     }
 }
 
 #[cfg(feature = "wav")]
 pub fn get_wav_samples(fname: String) -> ItMyMic {
+    use crate::asyncutil::and_log_err;
+
     let (send_ch, rcv_ch) = channel(SAMPLE_BUF_SIZE);
-    let send_ch2 = send_ch.clone();
 
     let reader = hound::WavReader::open(fname).unwrap();
-    let reader_bits = reader.spec().bits_per_sample;
+    let reader_bits: i32 = reader.spec().bits_per_sample.into();
+    let n_channels: usize = reader.spec().channels.into();
+
     let samples = reader.into_samples::<i32>();
-    let mut is_l_channel = false;
-    tokio::spawn(async move {
-        for s in samples {
-            if is_l_channel {
-                match s {
-                    Ok(s) => {
-                        send_ch.send(s as f32/2.0f32.powi(reader_bits.into())).unwrap();
-                    },
-                    Err(_) => break,
-                }
-            }
-            is_l_channel = !is_l_channel;
+
+    tokio::spawn(and_log_err(async move {
+        for s in samples.step_by(n_channels) {
+            send_ch.send(s? as f32/2.0f32.powi(reader_bits)).await?;
         }
-    });
+        Ok(())
+    }));
 
     ItMyMic{
-        samples_tx: send_ch2,
-        samples_rx: rcv_ch,
+        samples_ch: rcv_ch,
         _stream: None,
     }
 }

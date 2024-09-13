@@ -1,10 +1,13 @@
-use tokio::sync::broadcast::Receiver;
-use tokio::sync::mpsc::{UnboundedReceiver, unbounded_channel};
+use tokio::sync::mpsc::{channel, Receiver};
 
+use crate::asyncutil::and_log_err;
 use crate::dtmf::{goertzelme, NULL, OCTOTHORPE, SEXTILE};
 
 
 const MODE: u8 = 1;
+
+const DECODE_CHANNEL_SIZE: usize = 64;
+
 
 enum State {
     Lower((u8, u8)),
@@ -144,30 +147,22 @@ impl State {
     }
 }
 
-pub fn ding(sample_ch: Receiver<f32>) -> UnboundedReceiver<char> {
+pub fn ding(sample_ch: Receiver<f32>) -> Receiver<char> {
     let mut digs_ch = goertzelme(sample_ch);
 
-    let (send_ch, rcv_ch) = unbounded_channel();
+    let (send_ch, rcv_ch) = channel(DECODE_CHANNEL_SIZE);
     let mut state = State::new();
-    tokio::spawn(async move {
-        'eater: while let Some(dig) = digs_ch.recv().await {
-            match state.poosh(dig) {
-                Ok((new_state, chars)) => {
-                    state = new_state;
-                    for c in chars.into_iter() {
-                        if let Err(e) = send_ch.send(c) {
-                            dbg!(e);
-                            break 'eater;
-                        };
-                    }
-                },
-                Err(e) => {
-                    dbg!(e);
-                    break;
-                }
+
+    tokio::spawn(and_log_err(async move {
+        while let Some(dig) = digs_ch.recv().await {
+            let (new_state, chars) = state.poosh(dig)?;
+            state = new_state;
+            for c in chars.into_iter() {
+                send_ch.try_send(c)?;
             }
         }
-    });
+        Ok(())
+    }));
 
     rcv_ch
 }
