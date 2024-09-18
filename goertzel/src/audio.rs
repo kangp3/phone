@@ -42,7 +42,7 @@ pub fn get_mic_samples(sample_rate: u32) -> ItMyMic {
         move |data: &[f32], _: &cpal::InputCallbackInfo| {
             for sample in data.iter() {
                 if playback_idx % 2 == 0 {
-                    send_ch.try_send(*sample * 2.0_f32.powf(16.0)).unwrap();
+                    send_ch.try_send(*sample * 2.0_f32.powf(15.0)).unwrap();
                 }
                 playback_idx += 1;
             }
@@ -97,14 +97,23 @@ pub fn get_wav_samples(fname: String) -> ItMyMic {
     let (send_ch, rcv_ch) = channel(SAMPLE_BUF_SIZE);
 
     let reader = hound::WavReader::open(fname).unwrap();
-    let reader_bits: i32 = reader.spec().bits_per_sample.into();
-    let n_channels: usize = reader.spec().channels.into();
+    let sample_format = reader.spec().sample_format;
+    let reader_bits = reader.spec().bits_per_sample;
+    let n_channels = reader.spec().channels;
 
-    let samples = reader.into_samples::<i32>();
+    let samples: Box<dyn Iterator<Item=Result<f32, hound::Error>> + Send> = {
+        match (sample_format, reader_bits) {
+            (hound::SampleFormat::Float, _) => Box::new(reader.into_samples::<f32>().map(|s| Ok(s? * 2.0_f32.powf(15.0)))),
+            (hound::SampleFormat::Int, 8) => Box::new(reader.into_samples::<i8>().map(|s| Ok(((s? as i16) << 8) as f32))),
+            (hound::SampleFormat::Int, 16) => Box::new(reader.into_samples::<i16>().map(|s| Ok(s? as f32))),
+            (hound::SampleFormat::Int, 32) => Box::new(reader.into_samples::<i32>().map(|s| Ok((s? >> 16) as f32))),
+            (hound::SampleFormat::Int, n) => panic!("stinky sample format: {}", n),
+        }
+    };
 
     tokio::spawn(and_log_err(async move {
-        for s in samples.step_by(n_channels) {
-            send_ch.send(s? as f32/2.0f32.powi(reader_bits)).await?;
+        for s in samples.step_by(n_channels.into()) {
+            send_ch.send(s?).await?;
         }
         Ok(())
     }));

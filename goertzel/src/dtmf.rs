@@ -18,13 +18,22 @@ pub const OCTOTHORPE: u8 = 12;
 
 const DIGIT_CHANNEL_SIZE: usize = 64;
 
-const WINDOW_INTERVAL: usize = 1000;
-const CHUNK_SIZE: usize = 2000;
 // TODO(peter): Make this a runtime input
 const SAMPLE_FREQ: u32 = 48000;
-const THRESHOLD_MAG: f64 = 50.0;
 
+const WINDOW_INTERVAL: usize = 1024;
+const CHUNK_SIZE: usize = 1024;  // 12.75ms of sample
 
+const THRESH_REL_PEAK_ROW: f64 = 6.3;
+const THRESH_REL_PEAK_COL: f64 = 6.3;
+const THRESH_REL_ENERGY: f64 = 42.;
+const THRESH_MAG: f64 = 8e7;
+
+const HITS_TO_BEGIN: usize = 2;
+const MISSES_TO_END: usize = 2;
+
+const N_ROW_FREQS: usize = 4;
+const N_COL_FREQS: usize = 3;
 const FREQS: [u32;7] = [697, 770, 852, 941, 1209, 1336, 1477];
 static GZ_COEFFS: LazyLock<[f64;7]> = LazyLock::new(|| {
     FREQS.map(|f| {
@@ -41,6 +50,7 @@ static HAM_COEFFS: LazyLock<[f64;CHUNK_SIZE]> = LazyLock::new(|| {
 struct Goertzeler<'a> {
     ham_c_iter: Iter<'a, f64>,
     ariana_goertzde: [(f64, SharedRb::<Heap<f64>>);7],
+    total_energy: f64,
 }
 
 impl<'a> Goertzeler<'a> {
@@ -48,6 +58,7 @@ impl<'a> Goertzeler<'a> {
         Self {
             ham_c_iter: (*HAM_COEFFS).iter(),
             ariana_goertzde: (*GZ_COEFFS).map(|c| (c, SharedRb::<Heap<f64>>::new(2))),
+            total_energy: 0.,
         }
     }
 
@@ -57,7 +68,7 @@ impl<'a> Goertzeler<'a> {
             let mut riter = ring.iter();
             let q2 = *riter.next().unwrap_or(&0.0);
             let q1 = *riter.next().unwrap_or(&0.0);
-            ring.push_overwrite(*coeff * q1 - q2 + sample*ham_c);
+            ring.push_overwrite(*coeff * q1 - q2 + sample); //*ham_c);
         }
     }
 
@@ -79,39 +90,74 @@ pub fn goertzelme(mut sample_channel: Receiver<f32>) -> Receiver<u8> {
         .into_iter()
         .map(|_| Goertzeler::new())
         .collect();
-    let mut last_digit = NULL;
 
     let (send_ch, rcv_ch) = channel(DIGIT_CHANNEL_SIZE);
     tokio::spawn(and_log_err(async move {
+        let mut detect_idx = 0;
+        let mut curr_digit = NULL;
+        let mut n_hit = 0;
+        let mut n_miss = 0;
         loop {
             while sample_idx < WINDOW_INTERVAL {
                 let sample = sample_channel.recv().await
-                    .ok_or("goertzel hungers for audio samples")?;
+                    .ok_or("goertzel hungers for audio samples")? as f64;
                 for goertzeler in goertzelers.iter_mut() {
-                    goertzeler.push(sample as f64);
+                    goertzeler.push(sample);
                 }
                 sample_idx += 1;
             }
 
             let goertzeler = &goertzelers[goertzel_idx];
-            let sorted_mags: Vec<_> = goertzeler.goertzel_me()
-                .into_iter()
-                .enumerate()
+            let mut goertzel_nrgs = goertzeler.goertzel_me().into_iter().enumerate();
+            let row_nrgs: Vec<_> = goertzel_nrgs.by_ref().take(N_ROW_FREQS)
                 .sorted_by(|a, b| b.1.partial_cmp(&a.1).unwrap())
                 .collect();
-            let bg_sum = sorted_mags[2..].iter().map(|(_, mag)| mag).sum::<f64>();
-            let digit = match sorted_mags[0..2] {
-                _ if sorted_mags[1].1 < bg_sum * THRESHOLD_MAG => NULL,
-                [(3, _), (5, _)] |
-                [(5, _), (3, _)] => 0,
-                [(f1, _), (f2, _)] if f2 > 3 && f1 < 4 => (f1*3 + f2-3).try_into().unwrap(),
-                [(f1, _), (f2, _)] if f1 > 3 && f2 < 4 => (f2*3 + f1-3).try_into().unwrap(),
-                _ => NULL,
+            let col_nrgs: Vec<_> = goertzel_nrgs.take(N_COL_FREQS)
+                .sorted_by(|a, b| b.1.partial_cmp(&a.1).unwrap())
+                .collect();
+
+            // if detect_idx % 10 == 0 {
+            //     let pretty_row_nrgs = row_nrgs.clone().into_iter().map(|(idx, nrg)| format!("{}:{:.5} ", idx, nrg.log10())).collect::<String>();
+            //     let pretty_col_nrgs = col_nrgs.clone().into_iter().map(|(idx, nrg)| format!("{}:{:.5} ", idx, nrg.log10())).collect::<String>();
+            //     dbg!(pretty_row_nrgs);
+            //     dbg!(pretty_col_nrgs);
+            //     dbg!("");
+            // }
+            let digit = 'dig: {
+                let (row_idx, row_nrg) = row_nrgs[0];
+                let (col_idx, col_nrg) = col_nrgs[0];
+                if row_nrg < THRESH_MAG || col_nrg < THRESH_MAG
+                    || row_nrg < row_nrgs[1].1 * THRESH_REL_PEAK_ROW
+                    || col_nrg < col_nrgs[1].1 * THRESH_REL_PEAK_COL
+                    || row_nrg + col_nrg < THRESH_REL_ENERGY * goertzeler.total_energy
+                {
+                    break 'dig NULL;
+                }
+                match (row_idx, col_idx) {
+                    (3, 5) => 0,
+                    (f1, f2) => (f1*3 + f2-3).try_into().unwrap(),
+                }
             };
-            if digit != NULL && digit != last_digit {
-                send_ch.try_send(digit)?
+            // if detect_idx % 10 == 0 {
+            //     dbg!(digit);
+            // }
+            if digit == NULL {
+                n_miss += 1;
+            } else if digit == curr_digit {
+                n_hit += 1;
+                n_miss = 0;
+            } else {
+                curr_digit = digit;
+                n_hit = 1;
+                n_miss = 0;
             }
-            last_digit = digit;
+            if n_hit == HITS_TO_BEGIN {
+                send_ch.try_send(curr_digit)?;
+            }
+            // TODO(peter): Clean up this logic for when misses to end > hits to begin
+            if n_miss == MISSES_TO_END {
+                curr_digit = NULL;
+            }
 
             goertzelers[goertzel_idx] = Goertzeler::new();
 
@@ -119,6 +165,8 @@ pub fn goertzelme(mut sample_channel: Receiver<f32>) -> Receiver<u8> {
             if goertzel_idx == goertzelers.len() {
                 goertzel_idx = 0;
             }
+
+            detect_idx += 1;
             sample_idx = 0;
         }
     }));
