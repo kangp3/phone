@@ -10,6 +10,7 @@ use tracing::info;
 
 
 const SAMPLE_BUF_SIZE: usize = 65536;
+const N_CHANNELS: u16 = 2;
 
 
 pub struct ItMyMic {
@@ -27,7 +28,7 @@ pub fn get_mic_samples(sample_rate: u32) -> ItMyMic {
         loop {
             if let Ok(configs) = in_device.supported_input_configs() {
                 break configs
-                    .filter_map(|r| if r.channels() == 2 && r.sample_format() == SampleFormat::F32 {
+                    .filter_map(|r| if r.channels() == N_CHANNELS && r.sample_format() == SampleFormat::F32 {
                         r.try_with_sample_rate(cpal::SampleRate(sample_rate))
                     } else {
                         None
@@ -39,15 +40,11 @@ pub fn get_mic_samples(sample_rate: u32) -> ItMyMic {
         }
     };
 
-    let mut playback_idx = 0;
     let in_stream = in_device.build_input_stream(
         &in_config.into(),
         move |data: &[f32], _: &cpal::InputCallbackInfo| {
-            for sample in data.iter() {
-                if playback_idx % 2 == 0 {
-                    send_ch.try_send(*sample * 2.0_f32.powf(15.0)).unwrap();
-                }
-                playback_idx += 1;
+            for sample in data.iter().step_by(N_CHANNELS.into()) {
+                send_ch.try_send(*sample).unwrap();
             }
         },
         move |_| { panic!("Fuck error handling 😮"); },
@@ -79,7 +76,7 @@ pub fn get_mic_samples_with_outfile(sample_rate: u32, fname: String) -> ItMyMic 
     tokio::spawn(async move {
         and_log_err(async {
             while let Some(sample) = mic.samples_ch.recv().await {
-                writer.write_sample(sample / 2.0_f32.powf(16.0))?;
+                writer.write_sample(sample)?;
                 send_ch.try_send(sample)?;
             }
             Ok(())
@@ -110,10 +107,10 @@ pub fn get_wav_samples(fname: String, sample_range: Option<Range<u32>>) -> ItMyM
 
     let samples: Box<dyn Iterator<Item=Result<f32, hound::Error>> + Send> = {
         match (sample_format, reader_bits) {
-            (hound::SampleFormat::Float, _) => Box::new(reader.into_samples::<f32>().map(|s| Ok(s? * 2.0_f32.powf(15.0)))),
-            (hound::SampleFormat::Int, 8) => Box::new(reader.into_samples::<i8>().map(|s| Ok(((s? as i16) << 8) as f32))),
-            (hound::SampleFormat::Int, 16) => Box::new(reader.into_samples::<i16>().map(|s| Ok(s? as f32))),
-            (hound::SampleFormat::Int, 32) => Box::new(reader.into_samples::<i32>().map(|s| Ok((s? >> 16) as f32))),
+            (hound::SampleFormat::Float, _) => Box::new(reader.into_samples::<f32>().map(|s| Ok(s?))),
+            (hound::SampleFormat::Int, 8) => Box::new(reader.into_samples::<i8>().map(|s| Ok((s? as f32) / 2.0_f32.powi(7)))),
+            (hound::SampleFormat::Int, 16) => Box::new(reader.into_samples::<i16>().map(|s| Ok((s? as f32) / 2.0_f32.powi(15)))),
+            (hound::SampleFormat::Int, 32) => Box::new(reader.into_samples::<i32>().map(|s| Ok((s?as f32) / 2.0_f32.powi(31)))),
             (hound::SampleFormat::Int, n) => panic!("stinky sample format: {}", n),
         }
     };

@@ -21,6 +21,7 @@ const DIGIT_CHANNEL_SIZE: usize = 64;
 
 // TODO(peter): Make this a runtime input
 const SAMPLE_FREQ: u32 = 48000;
+const SAMPLE_SCALE_FACTOR: f64 = 32768.0; // 2^15
 
 const WINDOW_INTERVAL: usize = 1200;
 const CHUNK_SIZE: usize = 1200;  // 12.75ms of sample
@@ -100,7 +101,7 @@ pub fn goertzelme(mut sample_channel: Receiver<f32>) -> Receiver<u8> {
         loop {
             while sample_idx < WINDOW_INTERVAL {
                 let sample = sample_channel.recv().await
-                    .ok_or("goertzel hungers for audio samples")? as f64;
+                    .ok_or("goertzel hungers for audio samples")? as f64 * SAMPLE_SCALE_FACTOR;
                 for goertzeler in goertzelers.iter_mut() {
                     goertzeler.push(sample);
                 }
