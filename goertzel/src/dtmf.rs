@@ -98,6 +98,7 @@ pub fn goertzelme(mut sample_channel: Receiver<f32>) -> Receiver<u8> {
         let mut curr_digit = NULL;
         let mut n_hit = 0;
         let mut n_miss = 0;
+        let mut is_sent = false;
         loop {
             while sample_idx < WINDOW_INTERVAL {
                 let sample = sample_channel.recv().await
@@ -149,13 +150,16 @@ pub fn goertzelme(mut sample_channel: Receiver<f32>) -> Receiver<u8> {
                 curr_digit = digit;
                 n_hit = 1;
                 n_miss = 0;
+                is_sent = false;
             }
-            if n_hit == HITS_TO_BEGIN {
+            if n_hit == HITS_TO_BEGIN && !is_sent {
                 send_ch.try_send(curr_digit)?;
+                is_sent = true;
             }
             // TODO(peter): Clean up this logic for when misses to end > hits to begin
             if n_miss == MISSES_TO_END {
                 curr_digit = NULL;
+                n_hit = 0;
             }
 
             goertzelers[goertzel_idx] = Goertzeler::new();
