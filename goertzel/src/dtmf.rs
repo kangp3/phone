@@ -29,7 +29,7 @@ const CHUNK_SIZE: usize = 1200;  // 12.75ms of sample
 const THRESH_REL_PEAK_ROW: f64 = 6.0;
 const THRESH_REL_PEAK_COL: f64 = 6.3;
 const THRESH_REL_ENERGY: f64 = 42.;
-const THRESH_MAG: f64 = 1e9;
+const THRESH_MAG: f64 = 1e10;
 
 const HITS_TO_BEGIN: usize = 2;
 const MISSES_TO_END: usize = 2;
