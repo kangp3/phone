@@ -1,9 +1,12 @@
 use std::thread::sleep;
 use std::time::Duration;
+#[cfg(feature = "wav")]
+use std::ops::Range;
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{SampleFormat, Stream, SupportedStreamConfig};
 use tokio::sync::mpsc::{channel, Receiver};
+use tracing::info;
 
 
 const SAMPLE_BUF_SIZE: usize = 65536;
@@ -30,7 +33,7 @@ pub fn get_mic_samples(sample_rate: u32) -> ItMyMic {
                         None
                     }).next().unwrap();
             } else {
-                dbg!("Failed to get input device configs, retrying...");
+                info!("Failed to get input device configs, retrying...");
                 sleep(Duration::from_secs(1));
             }
         }
@@ -91,12 +94,16 @@ pub fn get_mic_samples_with_outfile(sample_rate: u32, fname: String) -> ItMyMic 
 }
 
 #[cfg(feature = "wav")]
-pub fn get_wav_samples(fname: String) -> ItMyMic {
+pub fn get_wav_samples(fname: String, sample_range: Option<Range<u32>>) -> ItMyMic {
     use crate::asyncutil::and_log_err;
 
     let (send_ch, rcv_ch) = channel(SAMPLE_BUF_SIZE);
 
-    let reader = hound::WavReader::open(fname).unwrap();
+    let mut reader = hound::WavReader::open(fname).unwrap();
+    let n_samples = (&reader).len();
+    if let Some(ref sample_range) = sample_range {
+        reader.seek(sample_range.start).unwrap();
+    };
     let sample_format = reader.spec().sample_format;
     let reader_bits = reader.spec().bits_per_sample;
     let n_channels = reader.spec().channels;
@@ -112,7 +119,7 @@ pub fn get_wav_samples(fname: String) -> ItMyMic {
     };
 
     tokio::spawn(and_log_err(async move {
-        for s in samples.step_by(n_channels.into()) {
+        for s in samples.step_by(n_channels.into()).take(sample_range.unwrap_or(0..n_samples).len()) {
             send_ch.send(s?).await?;
         }
         Ok(())

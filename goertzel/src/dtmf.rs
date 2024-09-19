@@ -8,6 +8,7 @@ use ringbuf::storage::Heap;
 use ringbuf::SharedRb;
 use ringbuf::traits::{RingBuffer, Consumer};
 use tokio::sync::mpsc::{Receiver, channel};
+use tracing::trace;
 
 use crate::asyncutil::and_log_err;
 
@@ -21,13 +22,13 @@ const DIGIT_CHANNEL_SIZE: usize = 64;
 // TODO(peter): Make this a runtime input
 const SAMPLE_FREQ: u32 = 48000;
 
-const WINDOW_INTERVAL: usize = 1024;
-const CHUNK_SIZE: usize = 1024;  // 12.75ms of sample
+const WINDOW_INTERVAL: usize = 1200;
+const CHUNK_SIZE: usize = 1200;  // 12.75ms of sample
 
-const THRESH_REL_PEAK_ROW: f64 = 6.3;
+const THRESH_REL_PEAK_ROW: f64 = 6.0;
 const THRESH_REL_PEAK_COL: f64 = 6.3;
 const THRESH_REL_ENERGY: f64 = 42.;
-const THRESH_MAG: f64 = 8e7;
+const THRESH_MAG: f64 = 1e9;
 
 const HITS_TO_BEGIN: usize = 2;
 const MISSES_TO_END: usize = 2;
@@ -68,7 +69,7 @@ impl<'a> Goertzeler<'a> {
             let mut riter = ring.iter();
             let q2 = *riter.next().unwrap_or(&0.0);
             let q1 = *riter.next().unwrap_or(&0.0);
-            ring.push_overwrite(*coeff * q1 - q2 + sample); //*ham_c);
+            ring.push_overwrite(*coeff * q1 - q2 + sample*ham_c);
         }
     }
 
@@ -93,7 +94,6 @@ pub fn goertzelme(mut sample_channel: Receiver<f32>) -> Receiver<u8> {
 
     let (send_ch, rcv_ch) = channel(DIGIT_CHANNEL_SIZE);
     tokio::spawn(and_log_err(async move {
-        let mut detect_idx = 0;
         let mut curr_digit = NULL;
         let mut n_hit = 0;
         let mut n_miss = 0;
@@ -116,13 +116,6 @@ pub fn goertzelme(mut sample_channel: Receiver<f32>) -> Receiver<u8> {
                 .sorted_by(|a, b| b.1.partial_cmp(&a.1).unwrap())
                 .collect();
 
-            // if detect_idx % 10 == 0 {
-            //     let pretty_row_nrgs = row_nrgs.clone().into_iter().map(|(idx, nrg)| format!("{}:{:.5} ", idx, nrg.log10())).collect::<String>();
-            //     let pretty_col_nrgs = col_nrgs.clone().into_iter().map(|(idx, nrg)| format!("{}:{:.5} ", idx, nrg.log10())).collect::<String>();
-            //     dbg!(pretty_row_nrgs);
-            //     dbg!(pretty_col_nrgs);
-            //     dbg!("");
-            // }
             let digit = 'dig: {
                 let (row_idx, row_nrg) = row_nrgs[0];
                 let (col_idx, col_nrg) = col_nrgs[0];
@@ -138,9 +131,14 @@ pub fn goertzelme(mut sample_channel: Receiver<f32>) -> Receiver<u8> {
                     (f1, f2) => (f1*3 + f2-3).try_into().unwrap(),
                 }
             };
-            // if detect_idx % 10 == 0 {
-            //     dbg!(digit);
-            // }
+
+            let pretty_row_nrgs = row_nrgs.clone().into_iter().map(|(idx, nrg)| format!("{}:{:.5} ", idx, nrg.log10())).collect::<String>();
+            let pretty_col_nrgs = col_nrgs.clone().into_iter().map(|(idx, nrg)| format!("{}:{:.5} ", idx, nrg.log10())).collect::<String>();
+            trace!(digit);
+            trace!("{} {}", col_nrgs[0].1.log10(), row_nrgs[0].1.log10());
+            trace!(pretty_row_nrgs);
+            trace!(pretty_col_nrgs);
+
             if digit == NULL {
                 n_miss += 1;
             } else if digit == curr_digit {
@@ -166,7 +164,6 @@ pub fn goertzelme(mut sample_channel: Receiver<f32>) -> Receiver<u8> {
                 goertzel_idx = 0;
             }
 
-            detect_idx += 1;
             sample_idx = 0;
         }
     }));

@@ -1,4 +1,5 @@
 use tokio::sync::mpsc::{channel, Receiver};
+use tracing::debug;
 
 use crate::asyncutil::and_log_err;
 use crate::dtmf::{goertzelme, NULL, OCTOTHORPE, SEXTILE};
@@ -155,6 +156,7 @@ pub fn ding(sample_ch: Receiver<f32>) -> Receiver<char> {
 
     tokio::spawn(and_log_err(async move {
         while let Some(dig) = digs_ch.recv().await {
+            debug!("{}", &dig);
             let (new_state, chars) = state.poosh(dig)?;
             state = new_state;
             for c in chars.into_iter() {

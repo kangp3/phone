@@ -3,11 +3,12 @@ use std::error::Error;
 
 use rppal::gpio::{Gpio, Trigger, InputPin};
 use rppal::system::DeviceInfo;
+use tracing::debug;
 
 pub fn try_register_shk() -> Result<InputPin, Box<dyn Error>> {
     DeviceInfo::new()?;
 
-    dbg!("Registering SHK handler...");
+    debug!("Registering SHK handler...");
     let gpio = Gpio::new()?;
     let mut shk = gpio.get(15)?.into_input();
     shk.set_async_interrupt(
@@ -17,7 +18,7 @@ pub fn try_register_shk() -> Result<InputPin, Box<dyn Error>> {
             panic!("PHONE SLAM");
         }
     )?;
-    dbg!("Registered SHK handler");
+    debug!("Registered SHK handler");
 
     Ok(shk)
 }

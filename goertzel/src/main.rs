@@ -1,10 +1,13 @@
 use std::error::Error;
+use std::ops::Range;
 use std::{panic, process};
 
 use goertzel::{self, hook};
 use tokio::process::Command;
 #[cfg(feature = "wav")]
 use pico_args::Arguments;
+use tracing::info;
+use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 
 
 const SAMPLE_RATE: u32 = 48000;
@@ -12,13 +15,29 @@ const SAMPLE_RATE: u32 = 48000;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
+    tracing_subscriber::registry()
+        .with(fmt::layer())
+        .with(EnvFilter::from_default_env())
+        .init();
+
     // Grab file names from cmd line args
     #[cfg(feature = "wav")]
-    let (infile, outfile): (Option<String>, Option<String>) = {
+    let (
+        infile,
+        outfile,
+        sample_range,
+    ): (Option<String>, Option<String>, Option<Range<u32>>) = {
         let mut args = Arguments::from_env();
         (
             args.opt_value_from_str("-f")?,
             args.opt_value_from_str("-o")?,
+            {
+                if let (Some(start_sample), Some(end_sample)) = (args.opt_value_from_str("-s")?, args.opt_value_from_str("-e")?) {
+                    Some(start_sample..end_sample)
+                } else {
+                    None
+                }
+            }
         )
     };
 
@@ -36,7 +55,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     #[cfg(feature = "wav")]
     let mic = {
         if let Some(fname) = infile {
-            goertzel::audio::get_wav_samples(fname)
+            goertzel::audio::get_wav_samples(fname, sample_range)
         } else if let Some(fname) = outfile {
             goertzel::audio::get_mic_samples_with_outfile(SAMPLE_RATE, fname)
         } else {
@@ -45,7 +64,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     };
     #[cfg(not(feature = "wav"))]
     let mic = goertzel::audio::get_mic_samples(SAMPLE_RATE);
-    dbg!("Got mic, listening...");
+    info!("Got mic, listening...");
 
     let mut ssid = String::new();
     let mut pass = String::new();
@@ -54,19 +73,19 @@ async fn main() -> Result<(), Box<dyn Error>> {
         if c == '\0' {
             break;
         }
-        dbg!(&c);
+        info!("{}", &c);
         ssid.push(c);
     }
-    dbg!(&ssid);
+    info!("{}", &ssid);
     while let Some(c) = chars_ch.recv().await {
         if c == '\0' {
             break;
         }
-        dbg!(&c);
+        info!("{}", &c);
         pass.push(c);
     }
     // TODO: Delete debugs
-    dbg!(&pass);
+    info!("{}", &pass);
 
     #[cfg(target_os = "linux")]
     let status = Command::new("nmcli")

@@ -1,11 +1,12 @@
 use ctrlc;
+use tracing::debug;
 
 pub fn try_register_shk() -> Result<(), ctrlc::Error> {
-    dbg!("Registering SHK handler...");
+    debug!("Registering SHK handler...");
     ctrlc::set_handler(move || {
         panic!("PHONE SLAM");
     })?;
-    dbg!("Registered SHK handler");
+    debug!("Registered SHK handler");
 
     Ok(())
 }
