@@ -8,7 +8,7 @@ use ringbuf::storage::Heap;
 use ringbuf::SharedRb;
 use ringbuf::traits::{RingBuffer, Consumer};
 use tokio::sync::mpsc::{Receiver, channel};
-use tracing::trace;
+use tracing::{debug, trace};
 
 use crate::asyncutil::and_log_err;
 
@@ -29,7 +29,7 @@ const CHUNK_SIZE: usize = 1200;  // 12.75ms of sample
 const THRESH_REL_PEAK_ROW: f64 = 6.0;
 const THRESH_REL_PEAK_COL: f64 = 6.3;
 const THRESH_REL_ENERGY: f64 = 42.;
-const THRESH_MAG: f64 = 1e10;
+const THRESH_MAG: f64 = 1e11;
 
 const HITS_TO_BEGIN: usize = 2;
 const MISSES_TO_END: usize = 2;
@@ -86,6 +86,7 @@ impl<'a> Goertzeler<'a> {
 
 
 pub fn goertzelme(mut sample_channel: Receiver<f32>) -> Receiver<u8> {
+    let mut total_sample_idx = 0;
     let mut sample_idx = 0;
     let mut goertzel_idx = 0;
     let mut goertzelers: Vec<_> = (0..(CHUNK_SIZE / WINDOW_INTERVAL))
@@ -107,6 +108,7 @@ pub fn goertzelme(mut sample_channel: Receiver<f32>) -> Receiver<u8> {
                     goertzeler.push(sample);
                 }
                 sample_idx += 1;
+                total_sample_idx += 1;
             }
 
             let goertzeler = &goertzelers[goertzel_idx];
@@ -153,6 +155,7 @@ pub fn goertzelme(mut sample_channel: Receiver<f32>) -> Receiver<u8> {
                 is_sent = false;
             }
             if n_hit == HITS_TO_BEGIN && !is_sent {
+                debug!(total_sample_idx);
                 send_ch.try_send(curr_digit)?;
                 is_sent = true;
             }
