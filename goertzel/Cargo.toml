@@ -24,3 +24,4 @@ ctrlc = "3.4.5"
 
 [features]
 wav = ["dep:hound", "dep:pico-args"]
+wifi = []

@@ -3,6 +3,7 @@ use std::ops::Range;
 use std::{panic, process};
 
 use goertzel::{self, hook};
+#[cfg(feature = "wifi")]
 use tokio::process::Command;
 #[cfg(feature = "wav")]
 use pico_args::Arguments;
@@ -87,7 +88,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // TODO: Delete debugs
     info!("{}", &pass);
 
-    #[cfg(target_os = "linux")]
+    #[cfg(all(target_os = "linux", feature = "wifi"))]
     let status = Command::new("nmcli")
         .args(&["--wait", "20"])
         .args(&["device", "wifi"])
@@ -97,7 +98,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .spawn()?
         .wait()
         .await?;
-    #[cfg(target_os = "macos")]
+    #[cfg(all(target_os = "macos", feature = "wifi"))]
     let status = Command::new("networksetup")
         .arg("-setairportnetwork")
         .arg("en0")
@@ -106,6 +107,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .spawn()?
         .wait()
         .await?;
+    #[cfg(feature = "wifi")]
     if !status.success() {
         panic!("Failed to connect to Wi-Fi");
     }
