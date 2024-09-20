@@ -1,18 +1,21 @@
+use std::time::Duration;
+
 use tokio::sync::broadcast;
 use tokio::sync::mpsc::{channel, Receiver};
+use tokio::time::sleep;
 use tracing::debug;
 
 use crate::asyncutil::and_log_err;
 use crate::dtmf::{goertzelme, NULL, OCTOTHORPE, SEXTILE};
-use crate::hook::SwitchHook;
-use crate::pulse::notgoertzelme;
 
 
 const MODE: u8 = 1;
 
+const CHAR_TIMEOUT_S: u64 = 3;
 const DECODE_CHANNEL_SIZE: usize = 64;
 
 
+#[derive(PartialEq)]
 enum State {
     Lower((u8, u8)),
     Upper((u8, u8)),
@@ -31,6 +34,10 @@ impl Default for State {
 impl State {
     fn new() -> Self {
         Self::default()
+    }
+
+    fn is_fresh(&self) -> bool {
+        *self == State::Lower((NULL, 0))
     }
 
     fn poosh(self, dig: u8) -> Result<(State, Vec<char>), String> {
@@ -92,7 +99,7 @@ impl State {
         Ok((next, c))
     }
 
-    fn emit(self) -> Option<char> {
+    fn emit(&self) -> Option<char> {
         match self {
             State::Lower((2, c)) => Some((b'a' + c - 1) as char),
             State::Lower((3, c)) => Some((b'd' + c - 1) as char),
@@ -151,10 +158,8 @@ impl State {
     }
 }
 
-pub fn ding(sample_ch: Receiver<f32>, shk_ch: broadcast::Receiver<SwitchHook>) -> Receiver<char> {
+pub fn ding(sample_ch: Receiver<f32>, mut notgoertzel_ch: broadcast::Receiver<u8>) -> Receiver<char> {
     let mut goertzel_ch = goertzelme(sample_ch);
-    // TODO(peter): Probably do this outside and handle hangups again
-    let (mut notgoertzel_ch, _) = notgoertzelme(shk_ch);
 
     let (send_ch, rcv_ch) = channel(DECODE_CHANNEL_SIZE);
     let send_ch2 = send_ch.clone();
@@ -176,10 +181,25 @@ pub fn ding(sample_ch: Receiver<f32>, shk_ch: broadcast::Receiver<SwitchHook>) -
 
     tokio::spawn(and_log_err(async move {
         loop {
-            let dig = notgoertzel_ch.recv().await?;
-            debug!("{}", &dig);
-            let (new_state, chars) = state2.poosh(dig)?;
-            state2 = new_state;
+            let mut chars = Vec::new();
+            tokio::select! {
+                _ = sleep(Duration::from_secs(CHAR_TIMEOUT_S)), if !state2.is_fresh() => {
+                    if let Some(ch) = state2.emit() {
+                        chars.push(ch);
+                    }
+                    state2 = State::new();
+                    debug!("char timeout");
+                }
+                dig = notgoertzel_ch.recv() => {
+                    let dig = dig?;
+                    debug!("{}", &dig);
+                    let (new_state, cs) = state2.poosh(dig)?;
+                    state2 = new_state;
+                    for c in cs {
+                        chars.push(c);
+                    }
+                }
+            }
             for c in chars.into_iter() {
                 send_ch2.try_send(c)?;
             }

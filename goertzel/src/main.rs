@@ -2,7 +2,8 @@ use std::error::Error;
 use std::ops::Range;
 use std::{panic, process};
 
-use goertzel::{self, hook};
+use goertzel::hook::SwitchHook;
+use goertzel::{self, hook, pulse};
 #[cfg(feature = "wifi")]
 use tokio::process::Command;
 #[cfg(feature = "wav")]
@@ -51,6 +52,15 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     // Set up the SHK GPIO pin (or ctrlc on non-Raspberry Pi)
     let (_shk_pin, _shk_send_ch, shk_recv_ch) = hook::try_register_shk()?;
+    let (notgoertzel_ch, mut hangup_ch) = pulse::notgoertzelme(shk_recv_ch);
+
+    tokio::spawn(async move {
+        while let Ok(shk_evt) = hangup_ch.recv().await {
+            if shk_evt == SwitchHook::ON {
+                info!("PHONE SLAM");
+            }
+        }
+    });
 
     // Get the audio source (WAV file or mic)
     #[cfg(feature = "wav")]
@@ -69,7 +79,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let mut ssid = String::new();
     let mut pass = String::new();
-    let mut chars_ch = goertzel::deco::ding(mic.samples_ch, shk_recv_ch);
+    let mut chars_ch = goertzel::deco::ding(mic.samples_ch, notgoertzel_ch);
     while let Some(c) = chars_ch.recv().await {
         if c == '\0' {
             break;

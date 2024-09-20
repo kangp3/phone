@@ -12,6 +12,7 @@ pub fn try_register_shk() -> Result<((), Sender<SwitchHook>, Receiver<SwitchHook
     let shk_send_ch2 = shk_send_ch.clone();
     let mut on_hook = false;
 
+    // TODO(peter): Use SIGUSR1 (10) for this
     ctrlc::set_handler(move || {
         if let Err(e) = shk_send_ch2.send(if on_hook { SwitchHook::OFF } else { SwitchHook::ON }) {
             warn!("{}", e);
