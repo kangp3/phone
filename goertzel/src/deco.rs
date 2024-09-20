@@ -1,8 +1,11 @@
+use tokio::sync::broadcast;
 use tokio::sync::mpsc::{channel, Receiver};
 use tracing::debug;
 
 use crate::asyncutil::and_log_err;
 use crate::dtmf::{goertzelme, NULL, OCTOTHORPE, SEXTILE};
+use crate::hook::SwitchHook;
+use crate::pulse::notgoertzelme;
 
 
 const MODE: u8 = 1;
@@ -148,14 +151,19 @@ impl State {
     }
 }
 
-pub fn ding(sample_ch: Receiver<f32>) -> Receiver<char> {
-    let mut digs_ch = goertzelme(sample_ch);
+pub fn ding(sample_ch: Receiver<f32>, shk_ch: broadcast::Receiver<SwitchHook>) -> Receiver<char> {
+    let mut goertzel_ch = goertzelme(sample_ch);
+    // TODO(peter): Probably do this outside and handle hangups again
+    let (mut notgoertzel_ch, _) = notgoertzelme(shk_ch);
 
     let (send_ch, rcv_ch) = channel(DECODE_CHANNEL_SIZE);
+    let send_ch2 = send_ch.clone();
+
     let mut state = State::new();
+    let mut state2 = State::new();
 
     tokio::spawn(and_log_err(async move {
-        while let Some(dig) = digs_ch.recv().await {
+        while let Some(dig) = goertzel_ch.recv().await {
             debug!("{}", &dig);
             let (new_state, chars) = state.poosh(dig)?;
             state = new_state;
@@ -164,6 +172,18 @@ pub fn ding(sample_ch: Receiver<f32>) -> Receiver<char> {
             }
         }
         Ok(())
+    }));
+
+    tokio::spawn(and_log_err(async move {
+        loop {
+            let dig = notgoertzel_ch.recv().await?;
+            debug!("{}", &dig);
+            let (new_state, chars) = state2.poosh(dig)?;
+            state2 = new_state;
+            for c in chars.into_iter() {
+                send_ch2.try_send(c)?;
+            }
+        }
     }));
 
     rcv_ch

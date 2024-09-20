@@ -49,8 +49,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
         process::exit(1);
     }));
 
-    // Set up the SHK GPIO pin (or ctrlc on non-Rasbperry Pi)
-    let _pin = hook::try_register_shk()?;
+    // Set up the SHK GPIO pin (or ctrlc on non-Raspberry Pi)
+    let (_shk_pin, _shk_send_ch, shk_recv_ch) = hook::try_register_shk()?;
 
     // Get the audio source (WAV file or mic)
     #[cfg(feature = "wav")]
@@ -69,7 +69,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let mut ssid = String::new();
     let mut pass = String::new();
-    let mut chars_ch = goertzel::deco::ding(mic.samples_ch);
+    let mut chars_ch = goertzel::deco::ding(mic.samples_ch, shk_recv_ch);
     while let Some(c) = chars_ch.recv().await {
         if c == '\0' {
             break;
