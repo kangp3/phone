@@ -169,7 +169,6 @@ pub fn ding(sample_ch: Receiver<f32>, mut notgoertzel_ch: broadcast::Receiver<u8
 
     tokio::spawn(and_log_err(async move {
         while let Some(dig) = goertzel_ch.recv().await {
-            debug!("{}", &dig);
             let (new_state, chars) = state.poosh(dig)?;
             state = new_state;
             for c in chars.into_iter() {
@@ -191,9 +190,7 @@ pub fn ding(sample_ch: Receiver<f32>, mut notgoertzel_ch: broadcast::Receiver<u8
                     debug!("char timeout");
                 }
                 dig = notgoertzel_ch.recv() => {
-                    let dig = dig?;
-                    debug!("{}", &dig);
-                    let (new_state, cs) = state2.poosh(dig)?;
+                    let (new_state, cs) = state2.poosh(dig?)?;
                     state2 = new_state;
                     for c in cs {
                         chars.push(c);

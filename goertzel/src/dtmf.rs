@@ -74,13 +74,131 @@ impl<'a> Goertzeler<'a> {
         }
     }
 
-    fn goertzel_me(self: &Self) -> Vec<f64> {
-        self.ariana_goertzde.iter().map(|(coeff, ring)| {
+    fn get_digit(self: &Self) -> u8 {
+        let mut nrgs = self.ariana_goertzde.iter().map(|(coeff, ring)| {
             let mut riter = ring.iter();
             let q2 = *riter.next().unwrap_or(&0.0);
             let q1 = *riter.next().unwrap_or(&0.0);
             q1*q1 + q2*q2 - q1*q2*coeff
-        }).collect()
+        }).enumerate();
+        let row_nrgs: Vec<_> = nrgs.by_ref().take(N_ROW_FREQS)
+            .sorted_by(|a, b| b.1.partial_cmp(&a.1).unwrap())
+            .collect();
+        let col_nrgs: Vec<_> = nrgs.take(N_COL_FREQS)
+            .sorted_by(|a, b| b.1.partial_cmp(&a.1).unwrap())
+            .collect();
+
+        let digit = 'dig: {
+            let (row_idx, row_nrg) = row_nrgs[0];
+            let (col_idx, col_nrg) = col_nrgs[0];
+            if row_nrg < THRESH_MAG || col_nrg < THRESH_MAG
+                || row_nrg < row_nrgs[1].1 * THRESH_REL_PEAK_ROW
+                || col_nrg < col_nrgs[1].1 * THRESH_REL_PEAK_COL
+                || row_nrg + col_nrg < THRESH_REL_ENERGY * self.total_energy
+            {
+                break 'dig NULL;
+            }
+            match (row_idx, col_idx) {
+                (3, 5) => 0,
+                (f1, f2) => (f1*3 + f2-3).try_into().unwrap(),
+            }
+        };
+
+        let pretty_row_nrgs = row_nrgs.clone().into_iter().map(|(idx, nrg)| format!("{}:{:.5} ", idx, nrg.log10())).collect::<String>();
+        let pretty_col_nrgs = col_nrgs.clone().into_iter().map(|(idx, nrg)| format!("{}:{:.5} ", idx, nrg.log10())).collect::<String>();
+        trace!(digit);
+        trace!("{} {}", col_nrgs[0].1.log10(), row_nrgs[0].1.log10());
+        trace!(pretty_row_nrgs);
+        trace!(pretty_col_nrgs);
+
+        digit
+    }
+}
+
+
+struct DigState {
+    sent_dig: u8,
+    curr_dig: u8,
+    n_hits: usize,
+    n_misses: usize,
+}
+
+impl Default for DigState {
+    fn default() -> Self {
+        Self {
+            sent_dig: NULL,
+            curr_dig: NULL,
+            n_hits: 0,
+            n_misses: 0,
+        }
+    }
+}
+
+impl DigState {
+    fn poosh(&mut self, dig: u8) -> Option<u8> {
+        match (self.sent_dig, self.curr_dig, self.n_hits, self.n_misses) {
+            (sent, _, _, _) if dig == sent => {
+                self.n_hits = 0;
+                self.n_misses = 0;
+            },
+            (NULL, cur, _, _) if dig != cur => {
+                self.curr_dig = dig;
+                self.n_hits = 1;
+            },
+            (NULL, cur, n_hits, _) if dig == cur && n_hits < HITS_TO_BEGIN - 1 => {
+                self.n_hits += 1;
+            },
+            (NULL, cur, n_hits, _) if dig == cur && n_hits == HITS_TO_BEGIN - 1 => {
+                self.sent_dig = cur;
+                self.n_hits = 0;
+                return Some(cur);
+            },
+            (_, _, _, n_misses) if dig == NULL && n_misses < MISSES_TO_END - 1 => {
+                self.n_misses += 1;
+            }
+            (_, _, _, n_misses) if dig == NULL && n_misses == MISSES_TO_END - 1 => {
+                self.sent_dig = NULL;
+                self.n_hits = 0;
+                self.n_misses = 0;
+            }
+            (_, cur, _, n_misses) if dig != cur && n_misses < MISSES_TO_END - 1 => {
+                self.curr_dig = dig;
+                self.n_hits = 0;
+                self.n_misses += 1;
+                if HITS_TO_BEGIN > 1 {
+                    self.n_hits += 1;
+                }
+            }
+            (_, cur, _, n_misses) if dig != cur && n_misses == MISSES_TO_END - 1 => {
+                self.sent_dig = NULL;
+                self.curr_dig = dig;
+                self.n_hits = 0;
+                self.n_misses = 0;
+                if HITS_TO_BEGIN == 1 {
+                    self.sent_dig = cur;
+                    self.n_misses = 0;
+                    return Some(cur);
+                } else {
+                    self.n_hits += 1;
+                }
+            }
+            (_, cur, _, n_misses) if dig == cur && n_misses < MISSES_TO_END - 1 => {
+                self.n_misses += 1;
+                self.n_hits += 1;
+            }
+            (_, cur, n_hits, n_misses) if dig == cur && n_misses == MISSES_TO_END - 1 => {
+                self.n_misses = 0;
+                if n_hits < HITS_TO_BEGIN - 1 {
+                    self.n_hits += 1;
+                } else {
+                    self.sent_dig = cur;
+                    self.n_hits = 0;
+                    return Some(cur);
+                }
+            }
+            _ => panic!("stinky dig state")
+        }
+        None
     }
 }
 
@@ -96,10 +214,7 @@ pub fn goertzelme(mut sample_channel: Receiver<f32>) -> Receiver<u8> {
 
     let (send_ch, rcv_ch) = channel(DIGIT_CHANNEL_SIZE);
     tokio::spawn(and_log_err(async move {
-        let mut curr_digit = NULL;
-        let mut n_hit = 0;
-        let mut n_miss = 0;
-        let mut is_sent = false;
+        let mut dig_state = DigState::default();
         loop {
             while sample_idx < WINDOW_INTERVAL {
                 let sample = sample_channel.recv().await
@@ -111,58 +226,12 @@ pub fn goertzelme(mut sample_channel: Receiver<f32>) -> Receiver<u8> {
                 total_sample_idx += 1;
             }
 
-            let goertzeler = &goertzelers[goertzel_idx];
-            let mut goertzel_nrgs = goertzeler.goertzel_me().into_iter().enumerate();
-            let row_nrgs: Vec<_> = goertzel_nrgs.by_ref().take(N_ROW_FREQS)
-                .sorted_by(|a, b| b.1.partial_cmp(&a.1).unwrap())
-                .collect();
-            let col_nrgs: Vec<_> = goertzel_nrgs.take(N_COL_FREQS)
-                .sorted_by(|a, b| b.1.partial_cmp(&a.1).unwrap())
-                .collect();
+            let detected_dig = goertzelers[goertzel_idx].get_digit();
 
-            let digit = 'dig: {
-                let (row_idx, row_nrg) = row_nrgs[0];
-                let (col_idx, col_nrg) = col_nrgs[0];
-                if row_nrg < THRESH_MAG || col_nrg < THRESH_MAG
-                    || row_nrg < row_nrgs[1].1 * THRESH_REL_PEAK_ROW
-                    || col_nrg < col_nrgs[1].1 * THRESH_REL_PEAK_COL
-                    || row_nrg + col_nrg < THRESH_REL_ENERGY * goertzeler.total_energy
-                {
-                    break 'dig NULL;
-                }
-                match (row_idx, col_idx) {
-                    (3, 5) => 0,
-                    (f1, f2) => (f1*3 + f2-3).try_into().unwrap(),
-                }
-            };
-
-            let pretty_row_nrgs = row_nrgs.clone().into_iter().map(|(idx, nrg)| format!("{}:{:.5} ", idx, nrg.log10())).collect::<String>();
-            let pretty_col_nrgs = col_nrgs.clone().into_iter().map(|(idx, nrg)| format!("{}:{:.5} ", idx, nrg.log10())).collect::<String>();
-            trace!(digit);
-            trace!("{} {}", col_nrgs[0].1.log10(), row_nrgs[0].1.log10());
-            trace!(pretty_row_nrgs);
-            trace!(pretty_col_nrgs);
-
-            if digit == NULL {
-                n_miss += 1;
-            } else if digit == curr_digit {
-                n_hit += 1;
-                n_miss = 0;
-            } else {
-                curr_digit = digit;
-                n_hit = 1;
-                n_miss = 0;
-                is_sent = false;
-            }
-            if n_hit == HITS_TO_BEGIN && !is_sent {
+            if let Some(dig) = dig_state.poosh(detected_dig) {
                 debug!(total_sample_idx);
-                send_ch.try_send(curr_digit)?;
-                is_sent = true;
-            }
-            // TODO(peter): Clean up this logic for when misses to end > hits to begin
-            if n_miss == MISSES_TO_END {
-                curr_digit = NULL;
-                n_hit = 0;
+                debug!(dig);
+                send_ch.try_send(dig)?;
             }
 
             goertzelers[goertzel_idx] = Goertzeler::new();
