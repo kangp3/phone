@@ -70,6 +70,16 @@ brew install arm-unknown-linux-gnueabihf
 cargo build --release --target=arm-unknown-linux-gnueabihf
 ```
 
+### PBX
+```
+wget https://downloads.asterisk.org/pub/telephony/asterisk/asterisk-20-current.tar.gz
+tar -xzvf asterisk-20-current.tar.gz
+./contrib/scripts/install_prereq install
+./configure
+make
+make install
+```
+
 ## Relevant Material
 - [SLIC datasheet](https://silvertel.com/images/datasheets/Ag1171-datasheet-Low-cost-ringing-SLIC-with-single-supply.pdf)
 - [gpiozero docs](https://gpiozero.readthedocs.io/en/latest/)
