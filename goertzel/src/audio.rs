@@ -1,7 +1,5 @@
 use std::thread::sleep;
 use std::time::Duration;
-#[cfg(feature = "wav")]
-use std::ops::Range;
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{SampleFormat, Stream, SupportedStreamConfig};
@@ -91,16 +89,13 @@ pub fn get_mic_samples_with_outfile(sample_rate: u32, fname: String) -> ItMyMic 
 }
 
 #[cfg(feature = "wav")]
-pub fn get_wav_samples(fname: String, sample_range: Option<Range<u32>>) -> ItMyMic {
-    use crate::asyncutil::and_log_err;
-
-    let (send_ch, rcv_ch) = channel(SAMPLE_BUF_SIZE);
-
+pub fn get_wav_samples(fname: String, start_idx: Option<u32>, end_idx: Option<u32>) -> Box<dyn Iterator<Item=f32>> {
     let mut reader = hound::WavReader::open(fname).unwrap();
-    let n_samples = (&reader).len();
-    if let Some(ref sample_range) = sample_range {
-        reader.seek(sample_range.start).unwrap();
-    };
+    let total_samples = (&reader).len();
+    let start_idx = start_idx.unwrap_or(0);
+    let end_idx = end_idx.unwrap_or(total_samples);
+    reader.seek(start_idx).unwrap();
+
     let sample_format = reader.spec().sample_format;
     let reader_bits = reader.spec().bits_per_sample;
     let n_channels = reader.spec().channels;
@@ -115,15 +110,5 @@ pub fn get_wav_samples(fname: String, sample_range: Option<Range<u32>>) -> ItMyM
         }
     };
 
-    tokio::spawn(and_log_err(async move {
-        for s in samples.step_by(n_channels.into()).take(sample_range.unwrap_or(0..n_samples).len()) {
-            send_ch.send(s?).await?;
-        }
-        Ok(())
-    }));
-
-    ItMyMic{
-        samples_ch: rcv_ch,
-        _stream: None,
-    }
+    Box::new(samples.step_by(n_channels.into()).take((end_idx - start_idx) as usize).map(|s| s.unwrap()))
 }

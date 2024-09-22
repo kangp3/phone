@@ -1,5 +1,4 @@
 use std::error::Error;
-use std::ops::Range;
 use std::{panic, process};
 
 use goertzel::hook::SwitchHook;
@@ -24,24 +23,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     // Grab file names from cmd line args
     #[cfg(feature = "wav")]
-    let (
-        infile,
-        outfile,
-        sample_range,
-    ): (Option<String>, Option<String>, Option<Range<u32>>) = {
-        let mut args = Arguments::from_env();
-        (
-            args.opt_value_from_str("-f")?,
-            args.opt_value_from_str("-o")?,
-            {
-                if let (Some(start_sample), Some(end_sample)) = (args.opt_value_from_str("-s")?, args.opt_value_from_str("-e")?) {
-                    Some(start_sample..end_sample)
-                } else {
-                    None
-                }
-            }
-        )
-    };
+    let outfile: Option<String> = Arguments::from_env().opt_value_from_str("-o")?;
 
     // Set up panic hook to exit program
     let default_hook = panic::take_hook();
@@ -65,9 +47,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // Get the audio source (WAV file or mic)
     #[cfg(feature = "wav")]
     let mic = {
-        if let Some(fname) = infile {
-            goertzel::audio::get_wav_samples(fname, sample_range)
-        } else if let Some(fname) = outfile {
+        if let Some(fname) = outfile {
             goertzel::audio::get_mic_samples_with_outfile(SAMPLE_RATE, fname)
         } else {
             goertzel::audio::get_mic_samples(SAMPLE_RATE)

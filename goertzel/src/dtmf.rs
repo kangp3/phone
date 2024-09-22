@@ -1,4 +1,5 @@
 use std::array::from_fn;
+use std::error::Error;
 use std::f64::consts::{self, PI};
 use std::slice::Iter;
 use std::sync::LazyLock;
@@ -23,8 +24,8 @@ const DIGIT_CHANNEL_SIZE: usize = 64;
 const SAMPLE_FREQ: u32 = 48000;
 const SAMPLE_SCALE_FACTOR: f64 = 32768.0; // 2^15
 
-const WINDOW_INTERVAL: usize = 1200;
-const CHUNK_SIZE: usize = 1200;  // 12.75ms of sample
+pub const WINDOW_INTERVAL: usize = 1200;
+pub const CHUNK_SIZE: usize = 1200;  // 12.75ms of sample
 
 const THRESH_REL_PEAK_ROW: f64 = 6.0;
 const THRESH_REL_PEAK_COL: f64 = 6.3;
@@ -246,4 +247,48 @@ pub fn goertzelme(mut sample_channel: Receiver<f32>) -> Receiver<u8> {
     }));
 
     rcv_ch
+}
+
+
+pub fn goertzeliter(mut samples: Box<dyn Iterator<Item=f32>>) -> Result<Vec<u8>, Box<dyn Error>> {
+    let mut total_sample_idx = 0;
+    let mut sample_idx = 0;
+    let mut goertzel_idx = 0;
+    let mut goertzelers: Vec<_> = (0..(CHUNK_SIZE / WINDOW_INTERVAL))
+        .into_iter()
+        .map(|_| Goertzeler::new())
+        .collect();
+
+    let mut digs = vec![];
+    let mut dig_state = DigState::default();
+    loop {
+        while sample_idx < WINDOW_INTERVAL {
+            if let Some(sample) = samples.next() {
+                for goertzeler in goertzelers.iter_mut() {
+                    goertzeler.push(sample as f64 * SAMPLE_SCALE_FACTOR);
+                }
+            } else {
+                return Ok(digs);
+            }
+            sample_idx += 1;
+            total_sample_idx += 1;
+        }
+
+        let detected_dig = goertzelers[goertzel_idx].get_digit();
+
+        if let Some(dig) = dig_state.poosh(detected_dig) {
+            debug!(total_sample_idx);
+            debug!(dig);
+            digs.push(dig);
+        }
+
+        goertzelers[goertzel_idx] = Goertzeler::new();
+
+        goertzel_idx += 1;
+        if goertzel_idx == goertzelers.len() {
+            goertzel_idx = 0;
+        }
+
+        sample_idx = 0;
+    }
 }

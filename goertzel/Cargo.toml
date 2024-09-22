@@ -3,6 +3,10 @@ name = "goertzel"
 version = "0.1.0"
 edition = "2021"
 
+[[bin]]
+name = "wav"
+required-features = ["wav"]
+
 [patch.crates-io]
 alsa-sys = { path = 'alsa-sys' }
 
