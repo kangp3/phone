@@ -27,8 +27,7 @@ const SAMPLE_SCALE_FACTOR: f64 = 32768.0; // 2^15
 pub const WINDOW_INTERVAL: usize = 1200;
 pub const CHUNK_SIZE: usize = 1200;  // 12.75ms of sample
 
-const THRESH_REL_PEAK_ROW: f64 = 1.35;
-const THRESH_REL_PEAK_COL: f64 = 2.;
+const THRESH_REL_PEAKS: [f64; 7] = [1.35, 1.35, 1.15, 1.35, 300., 2., 2.];
 const THRESH_REL_ENERGY: f64 = 42.;
 const THRESH_MAG: f64 = 2e9;
 
@@ -94,8 +93,8 @@ impl<'a> Goertzeler<'a> {
             let (row_idx, row_nrg) = row_nrgs[0];
             let (col_idx, col_nrg) = col_nrgs[0];
             if row_nrg < THRESH_MAG || col_nrg < THRESH_MAG
-                || row_nrg < row_nrgs[1].1 * THRESH_REL_PEAK_ROW
-                || col_nrg < col_nrgs[1].1 * THRESH_REL_PEAK_COL
+                || row_nrg < row_nrgs[1].1 * THRESH_REL_PEAKS[row_idx]
+                || col_nrg < col_nrgs[1].1 * THRESH_REL_PEAKS[col_idx]
                 || row_nrg + col_nrg < THRESH_REL_ENERGY * self.total_energy
             {
                 break 'dig NULL;
@@ -108,14 +107,14 @@ impl<'a> Goertzeler<'a> {
 
         let pretty_row_nrgs = row_nrgs.clone().into_iter().map(|(idx, nrg)| format!("{}:{:.5} ", idx, nrg.log10())).collect::<String>();
         let pretty_col_nrgs = col_nrgs.clone().into_iter().map(|(idx, nrg)| format!("{}:{:.5} ", idx, nrg.log10())).collect::<String>();
-        let row_nrg = row_nrgs[0].1;
-        let col_nrg = col_nrgs[0].1;
+        let (row_idx, row_nrg) = row_nrgs[0];
+        let (col_idx, col_nrg) = col_nrgs[0];
         trace!("");
         trace!("{}", digit);
         trace!("{}: row_nrg ({:.5}) >= THRESH_MAG ({})", row_nrg >= THRESH_MAG, row_nrg.log10(), THRESH_MAG.log10());
         trace!("{}: col_nrg ({:.5}) >= THRESH_MAG ({})", col_nrg >= THRESH_MAG, col_nrg.log10(), THRESH_MAG.log10());
-        trace!("{}: row_nrg ({:.5}) >= row_nrgs[1].1 ({:.5}) * THRESH_REL_PEAK_ROW ({:.5}) (R: {:.5})", row_nrg >= row_nrgs[1].1 * THRESH_REL_PEAK_ROW, row_nrg.log10(), row_nrgs[1].1.log10(), (row_nrgs[1].1 * THRESH_REL_PEAK_ROW).log10(), row_nrg/row_nrgs[1].1);
-        trace!("{}: col_nrg ({:.5}) >= col_nrgs[1].1 ({:.5}) * THRESH_REL_PEAK_COL ({:.5}) (R: {:.5})", col_nrg >= col_nrgs[1].1 * THRESH_REL_PEAK_COL, col_nrg.log10(), col_nrgs[1].1.log10(), (col_nrgs[1].1 * THRESH_REL_PEAK_COL).log10(), col_nrg/col_nrgs[1].1);
+        trace!("{}: row_nrg ({:.5}) >= row_nrgs[1].1 ({:.5}) * THRESH_REL_PEAKS ({:.5}) (R: {:.5})", row_nrg >= row_nrgs[1].1 * THRESH_REL_PEAKS[row_idx], row_nrg.log10(), row_nrgs[1].1.log10(), (row_nrgs[1].1 * THRESH_REL_PEAKS[row_idx]).log10(), row_nrg/row_nrgs[1].1);
+        trace!("{}: col_nrg ({:.5}) >= col_nrgs[1].1 ({:.5}) * THRESH_REL_PEAKS ({:.5}) (R: {:.5})", col_nrg >= col_nrgs[1].1 * THRESH_REL_PEAKS[col_idx], col_nrg.log10(), col_nrgs[1].1.log10(), (col_nrgs[1].1 * THRESH_REL_PEAKS[col_idx]).log10(), col_nrg/col_nrgs[1].1);
         trace!("{}: row_nrg + col_nrg ({:.5}) >= THRESH_REL_ENERGY * self.total_energy ({:.5}) (R: {:.5})", row_nrg + col_nrg >= THRESH_REL_ENERGY * self.total_energy, (row_nrg + col_nrg).log10(), (THRESH_REL_ENERGY * self.total_energy).log10(), (row_nrg + col_nrg) / self.total_energy);
         trace!("{} {}", col_nrgs[0].1.log10(), row_nrgs[0].1.log10());
         trace!(pretty_row_nrgs);
