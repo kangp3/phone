@@ -27,13 +27,13 @@ const SAMPLE_SCALE_FACTOR: f64 = 32768.0; // 2^15
 pub const WINDOW_INTERVAL: usize = 1200;
 pub const CHUNK_SIZE: usize = 1200;  // 12.75ms of sample
 
-const THRESH_REL_PEAK_ROW: f64 = 6.0;
-const THRESH_REL_PEAK_COL: f64 = 6.3;
+const THRESH_REL_PEAK_ROW: f64 = 1.35;
+const THRESH_REL_PEAK_COL: f64 = 2.;
 const THRESH_REL_ENERGY: f64 = 42.;
-const THRESH_MAG: f64 = 1e11;
+const THRESH_MAG: f64 = 2e9;
 
 const HITS_TO_BEGIN: usize = 2;
-const MISSES_TO_END: usize = 2;
+const MISSES_TO_END: usize = 1;
 
 const N_ROW_FREQS: usize = 4;
 const N_COL_FREQS: usize = 3;
@@ -114,9 +114,9 @@ impl<'a> Goertzeler<'a> {
         trace!("{}", digit);
         trace!("{}: row_nrg ({:.5}) >= THRESH_MAG ({})", row_nrg >= THRESH_MAG, row_nrg.log10(), THRESH_MAG.log10());
         trace!("{}: col_nrg ({:.5}) >= THRESH_MAG ({})", col_nrg >= THRESH_MAG, col_nrg.log10(), THRESH_MAG.log10());
-        trace!("{}: row_nrg ({:.5}) >= row_nrgs[1].1 ({:.5}) * THRESH_REL_PEAK_ROW ({:.5})", row_nrg >= row_nrgs[1].1 * THRESH_REL_PEAK_ROW, row_nrg.log10(), row_nrgs[1].1.log10(), (row_nrgs[1].1 * THRESH_REL_PEAK_ROW).log10());
-        trace!("{}: col_nrg ({:.5}) >= col_nrgs[1].1 ({:.5}) * THRESH_REL_PEAK_COL ({:.5})", col_nrg >= col_nrgs[1].1 * THRESH_REL_PEAK_COL, col_nrg.log10(), col_nrgs[1].1.log10(), (col_nrgs[1].1 * THRESH_REL_PEAK_COL).log10());
-        trace!("{}: row_nrg + col_nrg ({:.5}) >= THRESH_REL_ENERGY * self.total_energy ({:.5})", row_nrg + col_nrg >= THRESH_REL_ENERGY * self.total_energy, (row_nrg + col_nrg).log10(), (THRESH_REL_ENERGY * self.total_energy).log10());
+        trace!("{}: row_nrg ({:.5}) >= row_nrgs[1].1 ({:.5}) * THRESH_REL_PEAK_ROW ({:.5}) (R: {:.5})", row_nrg >= row_nrgs[1].1 * THRESH_REL_PEAK_ROW, row_nrg.log10(), row_nrgs[1].1.log10(), (row_nrgs[1].1 * THRESH_REL_PEAK_ROW).log10(), row_nrg/row_nrgs[1].1);
+        trace!("{}: col_nrg ({:.5}) >= col_nrgs[1].1 ({:.5}) * THRESH_REL_PEAK_COL ({:.5}) (R: {:.5})", col_nrg >= col_nrgs[1].1 * THRESH_REL_PEAK_COL, col_nrg.log10(), col_nrgs[1].1.log10(), (col_nrgs[1].1 * THRESH_REL_PEAK_COL).log10(), col_nrg/col_nrgs[1].1);
+        trace!("{}: row_nrg + col_nrg ({:.5}) >= THRESH_REL_ENERGY * self.total_energy ({:.5}) (R: {:.5})", row_nrg + col_nrg >= THRESH_REL_ENERGY * self.total_energy, (row_nrg + col_nrg).log10(), (THRESH_REL_ENERGY * self.total_energy).log10(), (row_nrg + col_nrg) / self.total_energy);
         trace!("{} {}", col_nrgs[0].1.log10(), row_nrgs[0].1.log10());
         trace!(pretty_row_nrgs);
         trace!(pretty_col_nrgs);
@@ -239,8 +239,7 @@ pub fn goertzelme(mut sample_channel: Receiver<f32>) -> Receiver<u8> {
             let detected_dig = goertzelers[goertzel_idx].get_digit();
 
             if let Some(dig) = dig_state.poosh(detected_dig) {
-                debug!(total_sample_idx);
-                debug!(dig);
+                debug!("{}: {}", dig, total_sample_idx);
                 send_ch.try_send(dig)?;
             }
 
@@ -286,8 +285,7 @@ pub fn goertzeliter(mut samples: Box<dyn Iterator<Item=f32>>) -> Result<Vec<u8>,
         let detected_dig = goertzelers[goertzel_idx].get_digit();
 
         if let Some(dig) = dig_state.poosh(detected_dig) {
-            debug!(total_sample_idx);
-            debug!(dig);
+            debug!("{}: {}", dig, total_sample_idx);
             digs.push(dig);
         }
 
