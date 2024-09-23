@@ -81,7 +81,7 @@ impl State {
             State::Symbol((NULL, 0)) if dig == MODE => State::Number,
 
             State::Number if (0..=9).contains(&dig) => {
-                c.push(dig as char);
+                c.push((dig + b'0') as char);
                 Self::default()
             }
 
