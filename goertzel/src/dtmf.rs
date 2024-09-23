@@ -66,13 +66,14 @@ impl<'a> Goertzeler<'a> {
     }
 
     fn push(self: &mut Self, sample: f64) {
-        let ham_c = self.ham_c_iter.next().unwrap();
+        let sample = sample * self.ham_c_iter.next().unwrap();
         for (coeff, ring) in &mut self.ariana_goertzde {
             let mut riter = ring.iter();
             let q2 = *riter.next().unwrap_or(&0.0);
             let q1 = *riter.next().unwrap_or(&0.0);
-            ring.push_overwrite(*coeff * q1 - q2 + sample*ham_c);
+            ring.push_overwrite(*coeff * q1 - q2 + sample);
         }
+        self.total_energy += sample*sample;
     }
 
     fn get_digit(self: &Self) -> u8 {
@@ -107,7 +108,15 @@ impl<'a> Goertzeler<'a> {
 
         let pretty_row_nrgs = row_nrgs.clone().into_iter().map(|(idx, nrg)| format!("{}:{:.5} ", idx, nrg.log10())).collect::<String>();
         let pretty_col_nrgs = col_nrgs.clone().into_iter().map(|(idx, nrg)| format!("{}:{:.5} ", idx, nrg.log10())).collect::<String>();
-        trace!(digit);
+        let row_nrg = row_nrgs[0].1;
+        let col_nrg = col_nrgs[0].1;
+        trace!("");
+        trace!("{}", digit);
+        trace!("{}: row_nrg ({:.5}) >= THRESH_MAG ({})", row_nrg >= THRESH_MAG, row_nrg.log10(), THRESH_MAG.log10());
+        trace!("{}: col_nrg ({:.5}) >= THRESH_MAG ({})", col_nrg >= THRESH_MAG, col_nrg.log10(), THRESH_MAG.log10());
+        trace!("{}: row_nrg ({:.5}) >= row_nrgs[1].1 ({:.5}) * THRESH_REL_PEAK_ROW ({:.5})", row_nrg >= row_nrgs[1].1 * THRESH_REL_PEAK_ROW, row_nrg.log10(), row_nrgs[1].1.log10(), (row_nrgs[1].1 * THRESH_REL_PEAK_ROW).log10());
+        trace!("{}: col_nrg ({:.5}) >= col_nrgs[1].1 ({:.5}) * THRESH_REL_PEAK_COL ({:.5})", col_nrg >= col_nrgs[1].1 * THRESH_REL_PEAK_COL, col_nrg.log10(), col_nrgs[1].1.log10(), (col_nrgs[1].1 * THRESH_REL_PEAK_COL).log10());
+        trace!("{}: row_nrg + col_nrg ({:.5}) >= THRESH_REL_ENERGY * self.total_energy ({:.5})", row_nrg + col_nrg >= THRESH_REL_ENERGY * self.total_energy, (row_nrg + col_nrg).log10(), (THRESH_REL_ENERGY * self.total_energy).log10());
         trace!("{} {}", col_nrgs[0].1.log10(), row_nrgs[0].1.log10());
         trace!(pretty_row_nrgs);
         trace!(pretty_col_nrgs);
