@@ -9,6 +9,9 @@ use tracing::{debug, warn};
 use crate::hook::SwitchHook;
 
 
+const SHK_PIN: u8 = 15;
+
+
 pub fn try_register_shk() -> Result<(InputPin, Sender<SwitchHook>, Receiver<SwitchHook>), Box<dyn Error>> {
     DeviceInfo::new()?;
 
@@ -18,7 +21,7 @@ pub fn try_register_shk() -> Result<(InputPin, Sender<SwitchHook>, Receiver<Swit
     let shk_send_ch2 = shk_send_ch.clone();
 
     let gpio = Gpio::new()?;
-    let mut shk = gpio.get(15)?.into_input();
+    let mut shk = gpio.get(SHK_PIN)?.into_input();
     shk.set_async_interrupt(
         Trigger::Both,
         Some(Duration::from_millis(10)),

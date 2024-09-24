@@ -4,7 +4,6 @@ use std::{panic, process};
 #[cfg(feature = "wav")]
 use goertzel::asyncutil::and_log_err;
 use goertzel::deco;
-use goertzel::hook::SwitchHook;
 use goertzel::phone::Phone;
 #[cfg(feature = "wav")]
 use hound;
@@ -12,7 +11,7 @@ use hound;
 use tokio::process::Command;
 #[cfg(feature = "wav")]
 use pico_args::Arguments;
-use tracing::{debug, info};
+use tracing::{error, info};
 use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 
 
@@ -66,7 +65,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let goertzel_ch = phone.goertz_ch.subscribe();
     let mut chars_ch = deco::ding(goertzel_ch, pulse_ch);
 
-    phone.begin_life().await?;
+    if let Err(e) = phone.begin_life().await {
+        error!(e);
+    }
 
     let mut ssid = String::new();
     let mut pass = String::new();

@@ -6,5 +6,6 @@ pub mod hook;
 pub mod nettest;
 pub mod phone;
 pub mod pulse;
+pub mod ring;
 pub mod state;
 pub mod tone;

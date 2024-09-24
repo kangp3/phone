@@ -4,7 +4,7 @@ use tokio::select;
 use tokio::sync::{broadcast, mpsc};
 use tracing::{debug, error};
 
-use crate::audio;
+use crate::{audio, ring};
 use crate::hook::{self, SwitchHook};
 use crate::nettest::do_i_have_internet;
 use crate::tone::TwoToneGen;
@@ -39,6 +39,7 @@ pub struct Phone {
     _shk_pin: (),
     #[cfg(target_os = "linux")]
     _shk_pin: rppal::gpio::InputPin,
+    _shk_ch: broadcast::Sender<SwitchHook>,
 
     pub audio_in_ch: broadcast::Sender<f32>,
     _audio_in_stream: cpal::Stream,
@@ -59,7 +60,7 @@ impl Phone {
         let (mic_ch, mic_stream, mic_cfg) = audio::get_input_channel()?;
         let (spk_ch, spk_stream, spk_cfg) = audio::get_output_channel()?;
 
-        let (_shk_pin, _, shk_ch) = hook::try_register_shk()?;
+        let (_shk_pin, shk_sender, shk_ch) = hook::try_register_shk()?;
         let (pulse_ch, _, hook_ch, _) = pulse::notgoertzelme(shk_ch);
         let goertz_ch = dtmf::goertzelme(mic_ch.subscribe());
 
@@ -67,6 +68,7 @@ impl Phone {
             state: State::Disconnected(WiFi::OnHook),
 
             _shk_pin,
+            _shk_ch: shk_sender,
 
             audio_in_ch: mic_ch,
             _audio_in_stream: mic_stream,
@@ -91,24 +93,17 @@ impl Phone {
             match &self.state {
                 State::Connected(Dial::OnHook) => {
                     debug!("phone on hook");
+                    let ring_handle = ring::ring_phone()?;
+
                     self.state = loop {
-                        select! {
-                            shk_evt = hook_ch.recv() => {
-                                match shk_evt {
-                                    Ok(SwitchHook::ON) => {},
-                                    Ok(SwitchHook::OFF) => break State::Connected(Dial::Await),
-                                    Err(e) => break State::Error(Box::new(e)),
-                                }
-                            }
-                            has_internet = do_i_have_internet() => {
-                                match has_internet {
-                                    Ok(true) => {},
-                                    Ok(false) => break State::Disconnected(WiFi::OnHook),
-                                    Err(e) => break State::Error(e),
-                                }
-                            }
+                        match hook_ch.recv().await {
+                            Ok(SwitchHook::ON) => {},
+                            Ok(SwitchHook::OFF) => break State::Connected(Dial::Await),
+                            Err(e) => break State::Error(Box::new(e)),
                         }
                     };
+
+                    ring_handle.abort();
                 }
                 State::Connected(Dial::Ringing) => todo!(),
                 State::Connected(Dial::Await) => {
@@ -128,8 +123,32 @@ impl Phone {
 
                 State::Disconnected(WiFi::OnHook) => {
                     debug!("phone on hook ft. no wifi");
-                    while let SwitchHook::ON = hook_ch.recv().await? {}
-                    self.state = State::Disconnected(WiFi::Await);
+
+                    let new_state = select! {
+                        shk_evt = hook_ch.recv() => {
+                            match shk_evt {
+                                Ok(SwitchHook::ON) => None,
+                                Ok(SwitchHook::OFF) => Some(State::Disconnected(WiFi::Await)),
+                                Err(e) => Some(State::Error(Box::new(e))),
+                            }
+                        }
+                        has_internet = do_i_have_internet() => {
+                            match has_internet {
+                                Ok(true) => Some(State::Connected(Dial::OnHook)),
+                                Ok(false) => None,
+                                Err(e) => Some(State::Error(e)),
+                            }
+                        }
+                    };
+                    self.state = if let Some(state) = new_state { state } else {
+                        loop {
+                            match hook_ch.recv().await {
+                                Ok(SwitchHook::ON) => {},
+                                Ok(SwitchHook::OFF) => break State::Disconnected(WiFi::Await),
+                                Err(e) => break State::Error(Box::new(e)),
+                            }
+                        }
+                    }
                 }
                 State::Disconnected(WiFi::Await) => {
                     debug!("phone picked up ft. no wifi");
