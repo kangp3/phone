@@ -1,10 +1,11 @@
 use std::error::Error;
 
+use tokio::process::Command;
 use tokio::select;
 use tokio::sync::{broadcast, mpsc};
-use tracing::{debug, error};
+use tracing::{debug, error, info};
 
-use crate::{audio, ring};
+use crate::{audio, deco, ring};
 use crate::hook::{self, SwitchHook};
 use crate::nettest::do_i_have_internet;
 use crate::tone::TwoToneGen;
@@ -97,6 +98,57 @@ impl Phone {
         })
     }
 
+    async fn get_wifi_creds(&self) -> Result<(), Box<dyn Error>> {
+        let pulse_ch = self.pulse_ch.subscribe();
+        let goertzel_ch = self.goertz_ch.subscribe();
+        let mut chars_ch = deco::ding(goertzel_ch, pulse_ch);
+
+        let mut ssid = String::new();
+        let mut pass = String::new();
+        while let Some(c) = chars_ch.recv().await {
+            if c == '\0' {
+                break;
+            }
+            debug!("{}", &c);
+            ssid.push(c);
+        }
+        info!("{}", &ssid);
+        while let Some(c) = chars_ch.recv().await {
+            if c == '\0' {
+                break;
+            }
+            debug!("{}", &c);
+            pass.push(c);
+        }
+        info!("{}", &pass);
+
+        #[cfg(target_os = "linux")]
+        let status = Command::new("nmcli")
+            .args(&["--wait", "20"])
+            .args(&["device", "wifi"])
+            .arg("connect")
+            .arg(&ssid)
+            .args(&["password", &pass])
+            .spawn()?
+            .wait()
+            .await?;
+        #[cfg(target_os = "macos")]
+        let status = Command::new("networksetup")
+            .arg("-setairportnetwork")
+            .arg("en0")
+            .arg(&ssid)
+            .arg(&pass)
+            .spawn()?
+            .wait()
+            .await?;
+
+        if !status.success() {
+            Err("no Wi-Fi 4 me :(".into())
+        } else {
+            Ok(())
+        }
+    }
+
     pub async fn begin_life(&mut self) -> Result<(), Box<dyn Error>> {
         loop {
             let mut hook_ch = self.hook_ch.subscribe();
@@ -105,6 +157,16 @@ impl Phone {
             match &self.state {
                 State::Connected(Dial::OnHook) => {
                     debug!("phone on hook");
+                    self.state = loop {
+                        match hook_ch.recv().await {
+                            Ok(SwitchHook::ON) => {},
+                            Ok(SwitchHook::OFF) => break State::Connected(Dial::Await),
+                            Err(e) => break State::Connected(Dial::Error(Box::new(e))),
+                        }
+                    };
+                }
+                State::Connected(Dial::Ringing) => {
+                    debug!("ringing");
                     let ring_handle = ring::ring_phone()?;
 
                     self.state = loop {
@@ -116,22 +178,56 @@ impl Phone {
                     };
 
                     ring_handle.abort();
-                }
-                State::Connected(Dial::Ringing) => todo!(),
+                },
                 State::Connected(Dial::Await) => {
                     debug!("phone picked up");
                     let tone_handle = TwoToneGen::off_hook(self.audio_out_sample_rate)
                         .send_to(audio_out_ch, self.audio_out_n_channels);
 
-                    while let SwitchHook::OFF = hook_ch.recv().await? {}
+                    self.state = loop {
+                        match hook_ch.recv().await {
+                            Ok(SwitchHook::ON) => break State::Connected(Dial::OnHook),
+                            Ok(SwitchHook::OFF) => {},
+                            Err(e) => break State::Connected(Dial::Error(Box::new(e))),
+                        }
+                    };
 
                     tone_handle.abort();
-                    self.state = State::Connected(Dial::OnHook);
                 }
-                State::Connected(Dial::DialOut) => todo!(),
-                State::Connected(Dial::Dialing) => todo!(),
+                State::Connected(Dial::DialOut) => {
+                    debug!("dialed out");
+                },
+                State::Connected(Dial::Dialing) => {
+                    debug!("dialing");
+                    let tone_handle = TwoToneGen::ring(self.audio_out_sample_rate)
+                        .send_to(audio_out_ch, self.audio_out_n_channels);
+
+                    self.state = loop {
+                        match hook_ch.recv().await {
+                            Ok(SwitchHook::ON) => break State::Connected(Dial::OnHook),
+                            Ok(SwitchHook::OFF) => {},
+                            Err(e) => break State::Connected(Dial::Error(Box::new(e))),
+                        }
+                    };
+
+                    tone_handle.abort();
+                },
                 State::Connected(Dial::Connected) => todo!(),
-                State::Connected(Dial::Busy) => todo!(),
+                State::Connected(Dial::Busy) => {
+                    debug!("busy");
+                    let tone_handle = TwoToneGen::busy(self.audio_out_sample_rate)
+                        .send_to(audio_out_ch, self.audio_out_n_channels);
+
+                    self.state = loop {
+                        match hook_ch.recv().await {
+                            Ok(SwitchHook::ON) => break State::Connected(Dial::OnHook),
+                            Ok(SwitchHook::OFF) => {},
+                            Err(e) => break State::Connected(Dial::Error(Box::new(e))),
+                        }
+                    };
+
+                    tone_handle.abort();
+                },
                 State::Connected(Dial::Error(e)) => {
                     error!(e);
                     self.state = loop {
@@ -177,10 +273,19 @@ impl Phone {
                     let tone_handle = TwoToneGen::no_wifi(self.audio_out_sample_rate)
                         .send_to(audio_out_ch, self.audio_out_n_channels);
 
-                    while let SwitchHook::OFF = hook_ch.recv().await? {}
+                    self.state = select! {
+                        wifi_evt = self.get_wifi_creds() => match wifi_evt {
+                            Ok(_) => State::Connected(Dial::Await),
+                            Err(e) => State::Disconnected(WiFi::Error(e)),
+                        },
+                        shk_evt = hook_ch.recv() => match shk_evt {
+                            Ok(SwitchHook::ON) => State::Disconnected(WiFi::OnHook),
+                            Ok(SwitchHook::OFF) => State::Disconnected(WiFi::Await),
+                            Err(e) => State::Disconnected(WiFi::Error(Box::new(e))),
+                        },
+                    };
 
                     tone_handle.abort();
-                    self.state = State::Disconnected(WiFi::OnHook);
                 }
                 State::Disconnected(WiFi::Error(e)) => {
                     error!(e);

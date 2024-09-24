@@ -61,55 +61,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
         info!("Started up WAV writer");
     }
 
-    let pulse_ch = phone.pulse_ch.subscribe();
-    let goertzel_ch = phone.goertz_ch.subscribe();
-    let mut chars_ch = deco::ding(goertzel_ch, pulse_ch);
-
     if let Err(e) = phone.begin_life().await {
         error!(e);
-    }
-
-    let mut ssid = String::new();
-    let mut pass = String::new();
-    while let Some(c) = chars_ch.recv().await {
-        if c == '\0' {
-            break;
-        }
-        info!("{}", &c);
-        ssid.push(c);
-    }
-    info!("{}", &ssid);
-    while let Some(c) = chars_ch.recv().await {
-        if c == '\0' {
-            break;
-        }
-        info!("{}", &c);
-        pass.push(c);
-    }
-    info!("{}", &pass);
-
-    #[cfg(all(target_os = "linux", feature = "wifi"))]
-    let status = Command::new("nmcli")
-        .args(&["--wait", "20"])
-        .args(&["device", "wifi"])
-        .arg("connect")
-        .arg(&ssid)
-        .args(&["password", &pass])
-        .spawn()?
-        .wait()
-        .await?;
-    #[cfg(all(target_os = "macos", feature = "wifi"))]
-    let status = Command::new("networksetup")
-        .arg("-setairportnetwork")
-        .arg("en0")
-        .arg(&ssid)
-        .arg(&pass)
-        .spawn()?
-        .wait()
-        .await?;
-    #[cfg(feature = "wifi")]
-    if !status.success() {
-        panic!("Failed to connect to Wi-Fi");
     }
     Ok(())
 }

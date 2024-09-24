@@ -1,10 +1,13 @@
 [Unit]
 Description=Phreak my Wi-Fi service
 Requires=NetworkManager.service
-After=NetworkManager.service
+After=network-online.target
 
 [Service]
 Restart=on-failure
+RestartSec=20
+Environment=RUST_LOG=debug
+ExecStartPre=/bin/sleep 30
 ExecStart=/home/recurse/goertzel
 
 [Install]
