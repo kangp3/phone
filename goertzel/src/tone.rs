@@ -50,12 +50,19 @@ impl TwoToneGen {
         Self::new(rate, OFFHOOK_TONES.0, OFFHOOK_TONES.1)
     }
 
+    pub fn no_wifi(rate: u32) -> Self {
+        Self::new(rate, OFFHOOK_TONES.0, OFFHOOK_TONES.1)
+            .beep(Duration::from_millis(500), Duration::from_millis(500))
+    }
+
     pub fn busy(rate: u32) -> Self {
         Self::new(rate, BUSY_TONES.0, BUSY_TONES.1)
+            .beep(Duration::from_millis(500), Duration::from_millis(500))
     }
 
     pub fn ring(rate: u32) -> Self {
         Self::new(rate, RING_TONES.0, RING_TONES.1)
+            .beep(Duration::from_secs(2), Duration::from_secs(4))
     }
 
     pub fn beep(mut self, on_dur: Duration, off_dur: Duration) -> Self {

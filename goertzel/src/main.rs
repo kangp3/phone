@@ -66,15 +66,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let goertzel_ch = phone.goertz_ch.subscribe();
     let mut chars_ch = deco::ding(goertzel_ch, pulse_ch);
 
-    let mut hook_ch = phone.hook_ch.subscribe();
-    tokio::spawn(async move {
-        while let Ok(shk_evt) = hook_ch.recv().await {
-            match shk_evt {
-                SwitchHook::ON => debug!("PHONE SLAM"),
-                SwitchHook::OFF => debug!("phone up"),
-            }
-        }
-    });
     phone.begin_life().await?;
 
     let mut ssid = String::new();
