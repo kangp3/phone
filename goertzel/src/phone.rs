@@ -63,8 +63,8 @@ impl Phone {
 
         let (shk_pin, _, shk_ch) = hook::try_register_shk()?;
         let (pulse_ch, _, hook_ch, _) = pulse::notgoertzelme(shk_ch);
+        // TODO(peter): Do this on-demand so we're not doing expensive Goertzeling all the time
         let goertz_ch = dtmf::goertzelme(mic_ch.subscribe());
-
 
         let has_internet = do_i_have_internet().await?;
         #[cfg(target_os = "macos")]
@@ -153,6 +153,8 @@ impl Phone {
         loop {
             let mut hook_ch = self.hook_ch.subscribe();
             let audio_out_ch = self.audio_out_ch.clone();
+            let goertzel_ch = self.goertz_ch.subscribe();
+            let pulse_ch = self.pulse_ch.subscribe();
 
             match &self.state {
                 State::Connected(Dial::OnHook) => {
@@ -172,7 +174,7 @@ impl Phone {
                     self.state = loop {
                         match hook_ch.recv().await {
                             Ok(SwitchHook::ON) => {},
-                            Ok(SwitchHook::OFF) => break State::Connected(Dial::Await),
+                            Ok(SwitchHook::OFF) => break State::Connected(Dial::Connected),
                             Err(e) => break State::Connected(Dial::Error(Box::new(e))),
                         }
                     };
@@ -183,12 +185,19 @@ impl Phone {
                     debug!("phone picked up");
                     let tone_handle = TwoToneGen::off_hook(self.audio_out_sample_rate)
                         .send_to(audio_out_ch, self.audio_out_n_channels);
+                    let mut dig_ch = deco::de_digs(goertzel_ch, pulse_ch);
 
                     self.state = loop {
-                        match hook_ch.recv().await {
-                            Ok(SwitchHook::ON) => break State::Connected(Dial::OnHook),
-                            Ok(SwitchHook::OFF) => {},
-                            Err(e) => break State::Connected(Dial::Error(Box::new(e))),
+                        select! {
+                            dig = dig_ch.recv() => match dig {
+                                Some(dig) => debug!("GOT DIG: {}", dig),
+                                None => break State::Connected(Dial::Error("dig channel died :(".into())),
+                            },
+                            hook_evt = hook_ch.recv() => match hook_evt {
+                                Ok(SwitchHook::ON) => break State::Connected(Dial::OnHook),
+                                Ok(SwitchHook::OFF) => {},
+                                Err(e) => break State::Connected(Dial::Error(Box::new(e))),
+                            },
                         }
                     };
 
