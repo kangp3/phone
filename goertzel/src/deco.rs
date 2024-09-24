@@ -158,13 +158,13 @@ impl State {
     }
 }
 
-pub fn de_digs(mut goertzel_ch: broadcast::Receiver<u8>, mut notgoertzel_ch: broadcast::Receiver<u8>) -> mpsc::Receiver<u8> {
+pub fn de_digs(mut goertzel_ch: mpsc::Receiver<u8>, mut notgoertzel_ch: broadcast::Receiver<u8>) -> mpsc::Receiver<u8> {
     let (goertz_send, digs_recv) = mpsc::channel(DIGS_CHANNEL_SIZE);
     let notgoertz_send = goertz_send.clone();
 
     tokio::spawn(and_log_err("deco:de_digs goertzel", async move {
         loop {
-            let dig = goertzel_ch.recv().await?;
+            let dig = goertzel_ch.recv().await.ok_or("goertz ch closed")?;
             if let Err(_) = goertz_send.send(dig).await { break }
         }
         Ok(())
@@ -181,7 +181,7 @@ pub fn de_digs(mut goertzel_ch: broadcast::Receiver<u8>, mut notgoertzel_ch: bro
     digs_recv
 }
 
-pub fn ding(goertzel_ch: broadcast::Receiver<u8>, notgoertzel_ch: broadcast::Receiver<u8>) -> mpsc::Receiver<char> {
+pub fn ding(goertzel_ch: mpsc::Receiver<u8>, notgoertzel_ch: broadcast::Receiver<u8>) -> mpsc::Receiver<char> {
     let (send_ch, rcv_ch) = mpsc::channel(CHARS_CHANNEL_SIZE);
     let mut digs_ch = de_digs(goertzel_ch, notgoertzel_ch);
 

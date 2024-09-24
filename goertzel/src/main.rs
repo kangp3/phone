@@ -3,12 +3,9 @@ use std::{panic, process};
 
 #[cfg(feature = "wav")]
 use goertzel::asyncutil::and_log_err;
-use goertzel::deco;
 use goertzel::phone::Phone;
 #[cfg(feature = "wav")]
 use hound;
-#[cfg(feature = "wifi")]
-use tokio::process::Command;
 #[cfg(feature = "wav")]
 use pico_args::Arguments;
 use tracing::{error, info};

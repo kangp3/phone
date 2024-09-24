@@ -53,7 +53,6 @@ pub struct Phone {
 
     pub hook_ch: broadcast::Sender<SwitchHook>,
     pub pulse_ch: broadcast::Sender<u8>,
-    pub goertz_ch: broadcast::Sender<u8>,
 }
 
 impl Phone {
@@ -63,8 +62,6 @@ impl Phone {
 
         let (shk_pin, _, shk_ch) = hook::try_register_shk()?;
         let (pulse_ch, _, hook_ch, _) = pulse::notgoertzelme(shk_ch);
-        // TODO(peter): Do this on-demand so we're not doing expensive Goertzeling all the time
-        let goertz_ch = dtmf::goertzelme(mic_ch.subscribe());
 
         let has_internet = do_i_have_internet().await?;
         #[cfg(target_os = "macos")]
@@ -94,13 +91,12 @@ impl Phone {
 
             hook_ch,
             pulse_ch,
-            goertz_ch,
         })
     }
 
     async fn get_wifi_creds(&self) -> Result<(), Box<dyn Error>> {
         let pulse_ch = self.pulse_ch.subscribe();
-        let goertzel_ch = self.goertz_ch.subscribe();
+        let goertzel_ch = dtmf::goertzelme(self.audio_in_ch.subscribe());
         let mut chars_ch = deco::ding(goertzel_ch, pulse_ch);
 
         let mut ssid = String::new();
@@ -151,14 +147,11 @@ impl Phone {
 
     pub async fn begin_life(&mut self) -> Result<(), Box<dyn Error>> {
         loop {
-            let mut hook_ch = self.hook_ch.subscribe();
-            let audio_out_ch = self.audio_out_ch.clone();
-            let goertzel_ch = self.goertz_ch.subscribe();
-            let pulse_ch = self.pulse_ch.subscribe();
-
             match &self.state {
                 State::Connected(Dial::OnHook) => {
                     debug!("phone on hook");
+                    let mut hook_ch = self.hook_ch.subscribe();
+
                     self.state = loop {
                         match hook_ch.recv().await {
                             Ok(SwitchHook::ON) => {},
@@ -169,6 +162,7 @@ impl Phone {
                 }
                 State::Connected(Dial::Ringing) => {
                     debug!("ringing");
+                    let mut hook_ch = self.hook_ch.subscribe();
                     let ring_handle = ring::ring_phone()?;
 
                     self.state = loop {
@@ -183,6 +177,10 @@ impl Phone {
                 },
                 State::Connected(Dial::Await) => {
                     debug!("phone picked up");
+                    let audio_out_ch = self.audio_out_ch.clone();
+                    let pulse_ch = self.pulse_ch.subscribe();
+                    let goertzel_ch = dtmf::goertzelme(self.audio_in_ch.subscribe());
+                    let mut hook_ch = self.hook_ch.subscribe();
                     let tone_handle = TwoToneGen::off_hook(self.audio_out_sample_rate)
                         .send_to(audio_out_ch, self.audio_out_n_channels);
                     let mut dig_ch = deco::de_digs(goertzel_ch, pulse_ch);
@@ -208,6 +206,8 @@ impl Phone {
                 },
                 State::Connected(Dial::Dialing) => {
                     debug!("dialing");
+                    let audio_out_ch = self.audio_out_ch.clone();
+                    let mut hook_ch = self.hook_ch.subscribe();
                     let tone_handle = TwoToneGen::ring(self.audio_out_sample_rate)
                         .send_to(audio_out_ch, self.audio_out_n_channels);
 
@@ -224,6 +224,8 @@ impl Phone {
                 State::Connected(Dial::Connected) => todo!(),
                 State::Connected(Dial::Busy) => {
                     debug!("busy");
+                    let audio_out_ch = self.audio_out_ch.clone();
+                    let mut hook_ch = self.hook_ch.subscribe();
                     let tone_handle = TwoToneGen::busy(self.audio_out_sample_rate)
                         .send_to(audio_out_ch, self.audio_out_n_channels);
 
@@ -239,6 +241,8 @@ impl Phone {
                 },
                 State::Connected(Dial::Error(e)) => {
                     error!(e);
+                    let mut hook_ch = self.hook_ch.subscribe();
+
                     self.state = loop {
                         match hook_ch.recv().await {
                             Ok(SwitchHook::ON) => break State::Connected(Dial::OnHook),
@@ -250,6 +254,7 @@ impl Phone {
 
                 State::Disconnected(WiFi::OnHook) => {
                     debug!("phone on hook ft. no wifi");
+                    let mut hook_ch = self.hook_ch.subscribe();
 
                     let new_state = select! {
                         shk_evt = hook_ch.recv() => {
@@ -279,6 +284,8 @@ impl Phone {
                 }
                 State::Disconnected(WiFi::Await) => {
                     debug!("phone picked up ft. no wifi");
+                    let audio_out_ch = self.audio_out_ch.clone();
+                    let mut hook_ch = self.hook_ch.subscribe();
                     let tone_handle = TwoToneGen::no_wifi(self.audio_out_sample_rate)
                         .send_to(audio_out_ch, self.audio_out_n_channels);
 
@@ -298,6 +305,8 @@ impl Phone {
                 }
                 State::Disconnected(WiFi::Error(e)) => {
                     error!(e);
+                    let mut hook_ch = self.hook_ch.subscribe();
+
                     self.state = loop {
                         match hook_ch.recv().await {
                             Ok(SwitchHook::ON) => break State::Disconnected(WiFi::OnHook),

@@ -8,7 +8,7 @@ use itertools::Itertools;
 use ringbuf::storage::Heap;
 use ringbuf::SharedRb;
 use ringbuf::traits::{RingBuffer, Consumer};
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, mpsc};
 use tracing::{debug, trace};
 
 use crate::asyncutil::and_log_err;
@@ -212,7 +212,7 @@ impl DigState {
 }
 
 
-pub fn goertzelme(mut sample_channel: broadcast::Receiver<f32>) -> broadcast::Sender<u8> {
+pub fn goertzelme(mut sample_channel: broadcast::Receiver<f32>) -> mpsc::Receiver<u8> {
     let mut total_sample_idx = 0;
     let mut sample_idx = 0;
     let mut goertzel_idx = 0;
@@ -221,8 +221,7 @@ pub fn goertzelme(mut sample_channel: broadcast::Receiver<f32>) -> broadcast::Se
         .map(|_| Goertzeler::new())
         .collect();
 
-    let (send_ch, _rcv_ch) = broadcast::channel(DIGIT_CHANNEL_SIZE);
-    let send_ch2 = send_ch.clone();
+    let (send_ch, rcv_ch) = mpsc::channel(DIGIT_CHANNEL_SIZE);
     tokio::spawn(and_log_err("goertzeling", async move {
         let mut dig_state = DigState::default();
         loop {
@@ -243,7 +242,7 @@ pub fn goertzelme(mut sample_channel: broadcast::Receiver<f32>) -> broadcast::Se
 
             if let Some(dig) = dig_state.poosh(detected_dig) {
                 debug!("{}: {}", dig, total_sample_idx);
-                let _ = send_ch.send(dig);
+                if let Err(_) = send_ch.send(dig).await { break }
             }
 
             goertzelers[goertzel_idx] = Goertzeler::new();
@@ -255,9 +254,10 @@ pub fn goertzelme(mut sample_channel: broadcast::Receiver<f32>) -> broadcast::Se
 
             sample_idx = 0;
         }
+        Ok(())
     }));
 
-    send_ch2
+    rcv_ch
 }
 
 
