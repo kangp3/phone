@@ -1,6 +1,10 @@
-pub mod audio;
 pub mod asyncutil;
+pub mod audio;
 pub mod deco;
 pub mod dtmf;
 pub mod hook;
+pub mod nettest;
+pub mod phone;
 pub mod pulse;
+pub mod state;
+pub mod tone;

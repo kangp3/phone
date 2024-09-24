@@ -1,18 +1,17 @@
 use std::time::Duration;
 
-use tokio::sync::broadcast;
-use tokio::sync::mpsc::{channel, Receiver};
+use tokio::sync::{broadcast, mpsc};
 use tokio::time::sleep;
 use tracing::debug;
 
 use crate::asyncutil::and_log_err;
-use crate::dtmf::{goertzelme, NULL, OCTOTHORPE, SEXTILE};
+use crate::dtmf::{NULL, OCTOTHORPE, SEXTILE};
 
 
 const MODE: u8 = 1;
 
 const CHAR_TIMEOUT_S: u64 = 3;
-const DECODE_CHANNEL_SIZE: usize = 64;
+const CHARS_CHANNEL_SIZE: usize = 64;
 
 
 #[derive(PartialEq)]
@@ -158,47 +157,45 @@ impl State {
     }
 }
 
-pub fn ding(sample_ch: Receiver<f32>, mut notgoertzel_ch: broadcast::Receiver<u8>) -> Receiver<char> {
-    let mut goertzel_ch = goertzelme(sample_ch);
+pub fn ding(mut goertzel_ch: broadcast::Receiver<u8>, mut notgoertzel_ch: broadcast::Receiver<u8>) -> mpsc::Receiver<char> {
+    let (goertzeled_send_ch, rcv_ch) = mpsc::channel(CHARS_CHANNEL_SIZE);
+    let pulsed_send_ch = goertzeled_send_ch.clone();
 
-    let (send_ch, rcv_ch) = channel(DECODE_CHANNEL_SIZE);
-    let send_ch2 = send_ch.clone();
+    let mut goertzeled_state = State::new();
+    let mut pulsed_state = State::new();
 
-    let mut state = State::new();
-    let mut state2 = State::new();
-
-    tokio::spawn(and_log_err(async move {
-        while let Some(dig) = goertzel_ch.recv().await {
-            let (new_state, chars) = state.poosh(dig)?;
-            state = new_state;
+    tokio::spawn(and_log_err("deco::ding goertzel", async move {
+        loop {
+            let dig = goertzel_ch.recv().await?;
+            let (new_state, chars) = goertzeled_state.poosh(dig)?;
+            goertzeled_state = new_state;
             for c in chars.into_iter() {
-                send_ch.try_send(c)?;
+                goertzeled_send_ch.try_send(c)?;
             }
         }
-        Ok(())
     }));
 
-    tokio::spawn(and_log_err(async move {
+    tokio::spawn(and_log_err("deco::ding pulse", async move {
         loop {
             let mut chars = Vec::new();
             tokio::select! {
-                _ = sleep(Duration::from_secs(CHAR_TIMEOUT_S)), if !state2.is_fresh() => {
-                    if let Some(ch) = state2.emit() {
+                _ = sleep(Duration::from_secs(CHAR_TIMEOUT_S)), if !pulsed_state.is_fresh() => {
+                    if let Some(ch) = pulsed_state.emit() {
                         chars.push(ch);
                     }
-                    state2 = State::new();
+                    pulsed_state = State::new();
                     debug!("char timeout");
                 }
                 dig = notgoertzel_ch.recv() => {
-                    let (new_state, cs) = state2.poosh(dig?)?;
-                    state2 = new_state;
+                    let (new_state, cs) = pulsed_state.poosh(dig?)?;
+                    pulsed_state = new_state;
                     for c in cs {
                         chars.push(c);
                     }
                 }
             }
             for c in chars.into_iter() {
-                send_ch2.try_send(c)?;
+                pulsed_send_ch.try_send(c)?;
             }
         }
     }));

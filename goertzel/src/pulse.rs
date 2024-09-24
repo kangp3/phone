@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use tokio::sync::broadcast::{channel, Receiver};
+use tokio::sync::broadcast;
 use tokio::time::sleep;
 use tracing::{trace, warn};
 
@@ -11,21 +11,31 @@ use crate::hook::SwitchHook;
 const PULSE_TIMEOUT_MS: u64 = 150;
 
 
-pub fn notgoertzelme(mut shk_ch: Receiver<SwitchHook>) -> (Receiver<u8>, Receiver<SwitchHook>) {
-    let (digit_send_ch, digit_recv_ch) = channel(1);
-    let (hangup_send_ch, hangup_recv_ch) = channel(1);
+pub fn notgoertzelme(mut shk_ch: broadcast::Receiver<SwitchHook>) -> (
+    broadcast::Sender<u8>,
+    broadcast::Receiver<u8>,
+    broadcast::Sender<SwitchHook>,
+    broadcast::Receiver<SwitchHook>,
+) {
+    let (digit_send_ch, digit_recv_ch) = broadcast::channel(1);
+    let digit_send_ch2 = digit_send_ch.clone();
+    let (onhook_send_ch, onhook_recv_ch) = broadcast::channel(1);
+    let onhook_send_ch2 = onhook_send_ch.clone();
 
-    tokio::spawn(and_log_err(async move {
+    tokio::spawn(and_log_err("pulse_detect", async move {
         loop {
             let hook_event = shk_ch.recv().await?;
-            if hook_event == SwitchHook::OFF { continue }
+            if hook_event == SwitchHook::OFF {
+                let _ = onhook_send_ch.send(SwitchHook::OFF);
+                continue;
+            }
 
             let mut digit = 0;
             loop {
                 tokio::select! {
                     _ = sleep(Duration::from_millis(PULSE_TIMEOUT_MS)) => {
                         trace!("I hang up");
-                        hangup_send_ch.send(SwitchHook::ON)?;
+                        let _ = onhook_send_ch.send(SwitchHook::ON);
                         break;
                     }
                     _ = shk_ch.recv() => {
@@ -39,7 +49,7 @@ pub fn notgoertzelme(mut shk_ch: Receiver<SwitchHook>) -> (Receiver<u8>, Receive
                             warn!("Something bad, digit is {}", digit);
                         } else {
                             trace!("I send {}", digit);
-                            digit_send_ch.send(digit % 10)?;
+                            let _ = digit_send_ch.send(digit % 10);
                         }
                         break;
                     }
@@ -49,5 +59,5 @@ pub fn notgoertzelme(mut shk_ch: Receiver<SwitchHook>) -> (Receiver<u8>, Receive
         }
     }));
 
-    return (digit_recv_ch, hangup_recv_ch);
+    (digit_send_ch2, digit_recv_ch, onhook_send_ch2, onhook_recv_ch)
 }

@@ -1,91 +1,54 @@
-use std::thread::sleep;
+use std::error::Error;
+use std::thread;
 use std::time::Duration;
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use cpal::{SampleFormat, Stream, SupportedStreamConfig};
-use tokio::sync::mpsc::{channel, Receiver};
+use cpal::{Sample, SampleFormat, Stream, SupportedStreamConfig};
+use tokio::sync::{broadcast, mpsc};
 use tracing::info;
 
 
-const SAMPLE_BUF_SIZE: usize = 65536;
-const N_CHANNELS: u16 = 2;
+const INPUT_SAMPLE_RATE: u32 = 48000;
+const INPUT_BUF_SIZE: usize = 1<<16;
+const IN_CHANNELS: u16 = 2;
+
+const OUTPUT_SAMPLE_RATE: u32 = 48000;
+const OUTPUT_BUF_SIZE: usize = 1<<12;
 
 
-pub struct ItMyMic {
-    pub samples_ch: Receiver<f32>,
-    _stream: Option<Stream>,
-}
-
-pub fn get_mic_samples(sample_rate: u32) -> ItMyMic {
-    let (send_ch, rcv_ch) = channel(SAMPLE_BUF_SIZE);
+pub fn get_input_channel() -> Result<(broadcast::Sender<f32>, Stream, SupportedStreamConfig), Box<dyn Error>> {
+    let (send_ch, _rcv_ch) = broadcast::channel(INPUT_BUF_SIZE);
 
     let host = cpal::default_host();
-
-    let in_device = host.default_input_device().unwrap();
-    let in_config: SupportedStreamConfig = {
-        loop {
-            if let Ok(configs) = in_device.supported_input_configs() {
-                break configs
-                    .filter_map(|r| if r.channels() == N_CHANNELS && r.sample_format() == SampleFormat::F32 {
-                        r.try_with_sample_rate(cpal::SampleRate(sample_rate))
-                    } else {
-                        None
-                    }).next().unwrap();
-            } else {
-                info!("Failed to get input device configs, retrying...");
-                sleep(Duration::from_secs(1));
-            }
+    let device = loop {
+        if let Some(device) = host.default_input_device() {
+            break device;
+        } else {
+            info!("Failed to get input device, retrying...");
+            thread::sleep(Duration::from_secs(1));
         }
     };
+    let config = device.supported_input_configs()?
+        .filter_map(|r| (r.channels() == IN_CHANNELS).then_some(r))
+        .filter_map(|r| (r.sample_format() == SampleFormat::F32).then_some(r))
+        .filter_map(|r| r.try_with_sample_rate(cpal::SampleRate(INPUT_SAMPLE_RATE)))
+        .next().ok_or("could not get supported input config")?;
 
-    let in_stream = in_device.build_input_stream(
-        &in_config.into(),
+    let send_ch2 = send_ch.clone();
+    let stream = device.build_input_stream(
+        &config.clone().into(),
         move |data: &[f32], _: &cpal::InputCallbackInfo| {
-            for sample in data.iter().step_by(N_CHANNELS.into()) {
-                send_ch.try_send(*sample).unwrap();
+            for sample in data.iter().step_by(IN_CHANNELS.into()) {
+                let _ = send_ch2.send(*sample);
             }
         },
         move |_| { panic!("Fuck error handling 😮"); },
         None,
     ).unwrap();
 
-    in_stream.play().unwrap();
+    stream.play().unwrap();
 
-    ItMyMic{
-        samples_ch: rcv_ch,
-        _stream: Some(in_stream),
-    }
-}
-
-#[cfg(feature = "wav")]
-pub fn get_mic_samples_with_outfile(sample_rate: u32, fname: String) -> ItMyMic {
-    use crate::asyncutil::and_log_err;
-
-    let mut mic = get_mic_samples(sample_rate);
-    let (send_ch, recv_ch) = channel(SAMPLE_BUF_SIZE);
-
-    let mut writer = hound::WavWriter::create(fname, hound::WavSpec{
-        channels: 1,
-        sample_rate,
-        bits_per_sample: 32,
-        sample_format: hound::SampleFormat::Float,
-    }).unwrap();
-
-    tokio::spawn(async move {
-        and_log_err(async {
-            while let Some(sample) = mic.samples_ch.recv().await {
-                writer.write_sample(sample)?;
-                send_ch.try_send(sample)?;
-            }
-            Ok(())
-        }).await;
-        writer.finalize().unwrap();
-    });
-
-    ItMyMic{
-        samples_ch: recv_ch,
-        _stream: mic._stream,
-    }
+    Ok((send_ch, stream, config))
 }
 
 #[cfg(feature = "wav")]
@@ -111,4 +74,36 @@ pub fn get_wav_samples(fname: String, start_idx: Option<u32>, end_idx: Option<u3
     };
 
     Box::new(samples.step_by(n_channels.into()).take((end_idx - start_idx) as usize).map(|s| s.unwrap()))
+}
+
+pub fn get_output_channel() -> Result<(mpsc::Sender<f32>, Stream, SupportedStreamConfig), Box<dyn Error>> {
+    let host = cpal::default_host();
+    let device = loop {
+        if let Some(device) = host.default_output_device() {
+            break device;
+        } else {
+            info!("Failed to get output device, retrying...");
+            thread::sleep(Duration::from_secs(1));
+        }
+    };
+    let config = device.supported_output_configs()?
+        .filter_map(|r| (r.sample_format() == SampleFormat::F32).then_some(r))
+        .filter_map(|r| r.try_with_sample_rate(cpal::SampleRate(OUTPUT_SAMPLE_RATE)))
+        .next().ok_or("could not get supported output config")?;
+
+    let (send_ch, mut rcv_ch) = mpsc::channel(OUTPUT_BUF_SIZE);
+    let stream = device.build_output_stream(
+        &config.clone().into(),
+        move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
+            for sample in data.iter_mut() {
+                *sample = rcv_ch.try_recv().unwrap_or(Sample::EQUILIBRIUM)
+            }
+        },
+        move |_| { panic!("Fuck error handling (output) 😮"); },
+        None,
+    )?;
+
+    stream.play()?;
+
+    Ok((send_ch, stream, config))
 }

@@ -1,17 +1,19 @@
 use std::error::Error;
 use std::{panic, process};
 
+#[cfg(feature = "wav")]
+use goertzel::asyncutil::and_log_err;
+use goertzel::deco;
 use goertzel::hook::SwitchHook;
-use goertzel::{self, hook, pulse};
+use goertzel::phone::Phone;
+#[cfg(feature = "wav")]
+use hound;
 #[cfg(feature = "wifi")]
 use tokio::process::Command;
 #[cfg(feature = "wav")]
 use pico_args::Arguments;
-use tracing::info;
+use tracing::{debug, info};
 use tracing_subscriber::{EnvFilter, fmt, prelude::*};
-
-
-const SAMPLE_RATE: u32 = 48000;
 
 
 #[tokio::main]
@@ -32,34 +34,51 @@ async fn main() -> Result<(), Box<dyn Error>> {
         process::exit(1);
     }));
 
-    // Set up the SHK GPIO pin (or ctrlc on non-Raspberry Pi)
-    let (_shk_pin, _shk_send_ch, shk_recv_ch) = hook::try_register_shk()?;
-    let (notgoertzel_ch, mut hangup_ch) = pulse::notgoertzelme(shk_recv_ch);
+    let mut phone = Phone::new().await?;
+    info!("Got mic, listening...");
 
+    // TODO(peter): Re-think the WAV file writing. Doesn't work if we're hijacking SIGINT
+    #[cfg(feature = "wav")]
+    if let Some(fname) = outfile {
+        let mut writer = hound::WavWriter::create(fname, hound::WavSpec{
+            channels: 1,
+            sample_rate: 48000,
+            bits_per_sample: 32,
+            sample_format: hound::SampleFormat::Float,
+        })?;
+
+        let mut samples_ch = phone.audio_in_ch.subscribe();
+
+        tokio::spawn(async move {
+            and_log_err("wav_write", async {
+                loop {
+                    let sample = samples_ch.recv().await?;
+                    writer.write_sample(sample)?;
+                }
+            }).await;
+            writer.finalize().unwrap();
+            info!("Finalized WAV writer");
+        });
+        info!("Started up WAV writer");
+    }
+
+    let pulse_ch = phone.pulse_ch.subscribe();
+    let goertzel_ch = phone.goertz_ch.subscribe();
+    let mut chars_ch = deco::ding(goertzel_ch, pulse_ch);
+
+    let mut hook_ch = phone.hook_ch.subscribe();
     tokio::spawn(async move {
-        while let Ok(shk_evt) = hangup_ch.recv().await {
-            if shk_evt == SwitchHook::ON {
-                info!("PHONE SLAM");
+        while let Ok(shk_evt) = hook_ch.recv().await {
+            match shk_evt {
+                SwitchHook::ON => debug!("PHONE SLAM"),
+                SwitchHook::OFF => debug!("phone up"),
             }
         }
     });
-
-    // Get the audio source (WAV file or mic)
-    #[cfg(feature = "wav")]
-    let mic = {
-        if let Some(fname) = outfile {
-            goertzel::audio::get_mic_samples_with_outfile(SAMPLE_RATE, fname)
-        } else {
-            goertzel::audio::get_mic_samples(SAMPLE_RATE)
-        }
-    };
-    #[cfg(not(feature = "wav"))]
-    let mic = goertzel::audio::get_mic_samples(SAMPLE_RATE);
-    info!("Got mic, listening...");
+    phone.begin_life().await?;
 
     let mut ssid = String::new();
     let mut pass = String::new();
-    let mut chars_ch = goertzel::deco::ding(mic.samples_ch, notgoertzel_ch);
     while let Some(c) = chars_ch.recv().await {
         if c == '\0' {
             break;
@@ -75,7 +94,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
         info!("{}", &c);
         pass.push(c);
     }
-    // TODO: Delete debugs
     info!("{}", &pass);
 
     #[cfg(all(target_os = "linux", feature = "wifi"))]

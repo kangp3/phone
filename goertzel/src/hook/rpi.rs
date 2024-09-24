@@ -13,6 +13,7 @@ pub fn try_register_shk() -> Result<(InputPin, Sender<SwitchHook>, Receiver<Swit
     DeviceInfo::new()?;
 
     debug!("Registering SHK handler...");
+    // TODO(peter): Maybe migrate this to MPSC
     let (shk_send_ch, shk_recv_ch) = channel(1);
     let shk_send_ch2 = shk_send_ch.clone();
 

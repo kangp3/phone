@@ -8,7 +8,7 @@ use itertools::Itertools;
 use ringbuf::storage::Heap;
 use ringbuf::SharedRb;
 use ringbuf::traits::{RingBuffer, Consumer};
-use tokio::sync::mpsc::{Receiver, channel};
+use tokio::sync::broadcast;
 use tracing::{debug, trace};
 
 use crate::asyncutil::and_log_err;
@@ -18,7 +18,7 @@ pub const NULL: u8 = u8::MAX;
 pub const SEXTILE: u8 = 10;
 pub const OCTOTHORPE: u8 = 12;
 
-const DIGIT_CHANNEL_SIZE: usize = 64;
+const DIGIT_CHANNEL_SIZE: usize = 3;
 
 // TODO(peter): Make this a runtime input
 const SAMPLE_FREQ: u32 = 48000;
@@ -212,7 +212,7 @@ impl DigState {
 }
 
 
-pub fn goertzelme(mut sample_channel: Receiver<f32>) -> Receiver<u8> {
+pub fn goertzelme(mut sample_channel: broadcast::Receiver<f32>) -> broadcast::Sender<u8> {
     let mut total_sample_idx = 0;
     let mut sample_idx = 0;
     let mut goertzel_idx = 0;
@@ -221,13 +221,17 @@ pub fn goertzelme(mut sample_channel: Receiver<f32>) -> Receiver<u8> {
         .map(|_| Goertzeler::new())
         .collect();
 
-    let (send_ch, rcv_ch) = channel(DIGIT_CHANNEL_SIZE);
-    tokio::spawn(and_log_err(async move {
+    let (send_ch, _rcv_ch) = broadcast::channel(DIGIT_CHANNEL_SIZE);
+    let send_ch2 = send_ch.clone();
+    tokio::spawn(and_log_err("goertzeling", async move {
         let mut dig_state = DigState::default();
         loop {
             while sample_idx < WINDOW_INTERVAL {
-                let sample = sample_channel.recv().await
-                    .ok_or("goertzel hungers for audio samples")? as f64 * SAMPLE_SCALE_FACTOR;
+                let sample = sample_channel.recv().await;
+                if let Err(_) = sample {
+                    continue;
+                }
+                let sample = sample? as f64 * SAMPLE_SCALE_FACTOR;
                 for goertzeler in goertzelers.iter_mut() {
                     goertzeler.push(sample);
                 }
@@ -239,7 +243,7 @@ pub fn goertzelme(mut sample_channel: Receiver<f32>) -> Receiver<u8> {
 
             if let Some(dig) = dig_state.poosh(detected_dig) {
                 debug!("{}: {}", dig, total_sample_idx);
-                send_ch.try_send(dig)?;
+                let _ = send_ch.send(dig);
             }
 
             goertzelers[goertzel_idx] = Goertzeler::new();
@@ -253,7 +257,7 @@ pub fn goertzelme(mut sample_channel: Receiver<f32>) -> Receiver<u8> {
         }
     }));
 
-    rcv_ch
+    send_ch2
 }
 
 
