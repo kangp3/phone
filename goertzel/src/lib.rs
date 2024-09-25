@@ -7,5 +7,6 @@ pub mod nettest;
 pub mod phone;
 pub mod pulse;
 pub mod ring;
+pub mod sip;
 pub mod state;
 pub mod tone;

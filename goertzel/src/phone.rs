@@ -1,11 +1,13 @@
 use std::error::Error;
+use std::net::SocketAddr;
 
+use rsip::SipMessage;
 use tokio::process::Command;
 use tokio::select;
 use tokio::sync::{broadcast, mpsc};
 use tracing::{debug, error, info};
 
-use crate::{audio, deco, ring};
+use crate::{audio, deco, ring, sip};
 use crate::hook::{self, SwitchHook};
 use crate::nettest::do_i_have_internet;
 use crate::tone::TwoToneGen;
@@ -53,6 +55,9 @@ pub struct Phone {
 
     pub hook_ch: broadcast::Sender<SwitchHook>,
     pub pulse_ch: broadcast::Sender<u8>,
+
+    sip_send_ch: Option<mpsc::Sender<(SocketAddr, SipMessage)>>,
+    sip_recv_ch: Option<broadcast::Sender<(SocketAddr, SipMessage)>>,
 }
 
 impl Phone {
@@ -75,6 +80,13 @@ impl Phone {
             (false, false) => State::Disconnected(WiFi::Await),
         };
 
+        let (sip_send_ch, sip_recv_ch) = if !has_internet { (None, None) } else {
+            let (sip_send_ch, sip_recv_ch) = sip::socket::bind().await?;
+            let sip_ch = sip_recv_ch.subscribe();
+            sip::register(sip_send_ch.clone(), sip_ch).await?;
+            (Some(sip_send_ch), Some(sip_recv_ch))
+        };
+
         Ok(Self {
             state,
 
@@ -91,6 +103,9 @@ impl Phone {
 
             hook_ch,
             pulse_ch,
+
+            sip_send_ch,
+            sip_recv_ch,
         })
     }
 

@@ -19,6 +19,9 @@ hound = { version = "3.5.1", optional = true }
 pico-args = { version = "0.5.0", optional = true }
 tracing = { version = "0.1.40", features = ["max_level_trace", "release_max_level_trace"] }
 tracing-subscriber = { version = "0.3.18", features = ["env-filter", "std"] }
+rsip = "0.4.0"
+local-ip-address = "0.6.3"
+md-5 = "0.10.6"
 
 [target.arm-unknown-linux-gnueabihf.dependencies]
 rppal = "0.19.0"

@@ -80,6 +80,18 @@ make
 make install
 ```
 
+## socat wiring on Windows
+Cygwin:
+```
+socat UDP4-RECVFROM:5060,fork UDP4:"$(wsl hostname -I | tr -d ' ')":5062 &
+socat UDP4-RECVFROM:5061,fork UDP4:"$(wsl hostname -I | tr -d ' ')":5063 &
+```
+WSL:
+```
+socat UDP4-RECVFROM:5062,fork UDP4:localhost:5060 &
+socat UDP4-RECVFROM:5063,fork UDP4:localhost:5061 &
+```
+
 ## Relevant Material
 - [SLIC datasheet](https://silvertel.com/images/datasheets/Ag1171-datasheet-Low-cost-ringing-SLIC-with-single-supply.pdf)
 - [gpiozero docs](https://gpiozero.readthedocs.io/en/latest/)
