@@ -16,13 +16,13 @@ use rsip::prelude::ToTypedHeader;
 use rsip::typed::{Allow, Authorization, CSeq, Contact, From, To, Via};
 use rsip::{Auth, Header, Headers, Method, Param, Request, Scheme, SipMessage, StatusCode, Transport, Uri, Version};
 use tokio::sync::{mpsc, RwLock, RwLockWriteGuard};
-use tracing::debug;
 
 
 const MESSAGE_CHANNEL_SIZE: usize = 64;
 
 const USERNAME: &str = "1100";
 const PASSWORD: &str = "SW2fur7facrarac";
+const REALM: &str = "asterisk";
 const USER_AGENT: &str = "Frandline";
 const UA_VERSION: &str = "0.1.0";
 // Branch should always be prefixed with magic string z9hG4bK
@@ -72,7 +72,11 @@ pub async fn register(out_ch: mpsc::Sender<SipMessage>) -> Result<(), Box<dyn Er
                 _ => {},
             }
         }
-        let msg = SipMessage::Request(txn.authed_register_request(opaque, nonce)?);
+        let msg = SipMessage::Request({
+            let mut req = txn.register_request()?;
+            txn.add_auth_to_request(&mut req, opaque, nonce);
+            req
+        });
         txn.tx_ch.send(msg).await?;
         match txn.rx_ch.recv().await.ok_or("closed rx channel")? {
             SipMessage::Request(_) => Err("expected 200 response to authed register, got request")?,
@@ -268,38 +272,23 @@ impl Txn {
         Ok(req)
     }
 
-    fn authed_register_request(&mut self, opaque: Option<String>, nonce: String) -> Result<Request, Box<dyn Error>> {
+    fn add_auth_to_request(&self, req: &mut Request, opaque: Option<String>, nonce: String) {
         let cnonce = format!("{}/{}", ms_since_epoch(), rand_chars(&mut thread_rng(), 16));
+        // TOOD(peter): Actually track this?
         let nc = 1;
 
-        let ha1 = md5(format!("{}:{}:{}", USERNAME, "asterisk", PASSWORD));
-        let ha2 = md5(format!("REGISTER:sip:{}", (*SERVER_ADDR)));
+        let ha1 = md5(format!("{}:{}:{}", USERNAME, REALM, PASSWORD));
+        let ha2 = md5(format!("{}:{}:{}", req.method, req.uri.scheme.as_ref().unwrap_or(&Scheme::Sip), (*SERVER_ADDR)));
         let response = md5(format!("{}:{}:{:08x}:{}:auth:{}", ha1, nonce, nc, cnonce, ha2));
 
-        let mut headers: Headers = Default::default();
-        headers.push(CSeq{ seq: 2, method: Method::Register }.into());
-        headers.push(Via{
-            version: Version::V2,
-            transport: Transport::Udp,
-            uri: Uri {
-                host_with_port: (*SERVER_ADDR).into(),
-                ..Default::default()
-            },
-            params: vec![
-                Param::Branch(format!("{}{}", BRANCH_PREFIX, rand_chars(&mut thread_rng(), 10)).into()),
-                Param::Other(OtherParam::from("rport"), None)
-            ],
-        }.into());
-        headers.push(UserAgent::from("Frandline/0.1.0").into());
-        headers.push(Authorization{
+        req.headers.push(Authorization{
             scheme: auth::Scheme::Digest,
             username: USERNAME.into(),
-            realm: "asterisk".to_string(),
+            realm: REALM.into(),
             nonce,
             uri: Uri {
                 scheme: Some(Scheme::Sip),
                 host_with_port: (*SERVER_ADDR).into(),
-                auth: None,
                 ..Default::default()
             },
             response,
@@ -307,61 +296,6 @@ impl Txn {
             opaque,
             qop: Some(AuthQop::Auth { cnonce, nc }),
         }.into());
-        headers.push(From{
-            display_name: None,
-            uri: Uri {
-                scheme: Some(Scheme::Sip),
-                host_with_port: (*SERVER_ADDR).into(),
-                auth: Some(Auth{
-                    user: USERNAME.into(),
-                    password: None,
-                }),
-                ..Default::default()
-            },
-            params: vec![self.from_tag.clone()],
-        }.into());
-        headers.push(CallId::from(self.call_id.clone()).into());
-        headers.push(To{
-            display_name: None,
-            uri: Uri {
-                scheme: Some(Scheme::Sip),
-                host_with_port: (*SERVER_ADDR).into(),
-                auth: Some(Auth{
-                    user: USERNAME.into(),
-                    password: None,
-                }),
-                ..Default::default()
-            },
-            params: vec![],
-        }.into());
-        headers.push(Contact{
-            display_name: None,
-            uri: Uri {
-                scheme: Some(Scheme::Sip),
-                host_with_port: (*CLIENT_ADDR).into(),
-                auth: Some(Auth{
-                    user: USERNAME.into(),
-                    password: None,
-                }),
-                ..Default::default()
-            },
-            params: vec![Param::Q("1".into())],
-        }.into());
-        headers.push(Allow::from(Method::all()).into());
-        headers.push(Expires::from(3600).into());
-        headers.push(ContentLength::from(0).into());
-        headers.push(MaxForwards::from(70).into());
-
-        Ok(Request {
-            method: Method::Register,
-            uri: Uri {
-                scheme: Some(Scheme::Sip),
-                host_with_port: (*SERVER_ADDR).into(),
-                ..Default::default()
-            },
-            headers,
-            version: Version::V2,
-            body: vec![],
-        })
+        req.headers.push(Expires::from(3600).into());
     }
 }
