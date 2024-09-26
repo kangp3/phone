@@ -50,6 +50,7 @@ fn md5(s: String) -> String {
 pub async fn register(out_ch: mpsc::Sender<SipMessage>) -> Result<(), Box<dyn Error>> {
     // TODO(peter): Figure out how to get the rx channel into a mailbox while avoiding deadlock on
     // the TXN_MAILBOXES
+    debug!("hello??");
     let mut txn = Txn::new(out_ch).await;
     let msg = SipMessage::Request(txn.register_request()?);
     debug!("{}", msg);
@@ -256,20 +257,32 @@ impl Txn {
     }
 
     fn authed_register_request(&mut self, opaque: Option<String>, nonce: String) -> Result<Request, Box<dyn Error>> {
-        let mut req = self.new_request(Method::Register, vec![])?;
-
         let cnonce = format!("{}/{}", ms_since_epoch(), rand_chars(&mut thread_rng(), 16));
         let nc = 1;
 
         let ha1 = md5(format!("{}:{}:{}", USERNAME, "asterisk", PASSWORD));
-        // TODO(peter): Take these as inputs
-        let ha2 = md5(format!("REGISTER:sip:{}", (*SERVER_ADDR).ip()));
+        let ha2 = md5(format!("REGISTER:sip:{}", (*SERVER_ADDR)));
         let response = md5(format!("{}:{}:{:08x}:{}:auth:{}", ha1, nonce, nc, cnonce, ha2));
 
-        req.headers.push(Authorization{
+        let mut headers: Headers = Default::default();
+        headers.push(CSeq{ seq: 2, method: Method::Register }.into());
+        headers.push(Via{
+            version: Version::V2,
+            transport: Transport::Udp,
+            uri: Uri {
+                host_with_port: (*SERVER_ADDR).into(),
+                ..Default::default()
+            },
+            params: vec![
+                Param::Branch(format!("{}{}", BRANCH_PREFIX, rand_chars(&mut thread_rng(), 10)).into()),
+                Param::Other(OtherParam::from("rport"), None)
+            ],
+        }.into());
+        headers.push(UserAgent::from("Frandline/0.1.0").into());
+        headers.push(Authorization{
             scheme: auth::Scheme::Digest,
             username: USERNAME.into(),
-            realm: "asterisk".into(),  // TODO(peter): Take as input
+            realm: "asterisk".to_string(),
             nonce,
             uri: Uri {
                 scheme: Some(Scheme::Sip),
@@ -282,8 +295,61 @@ impl Txn {
             opaque,
             qop: Some(AuthQop::Auth { cnonce, nc }),
         }.into());
-        req.headers.push(Expires::from(3600).into());
-        req.headers.push(Allow::from(Method::all()).into());
-        Ok(req)
+        headers.push(From{
+            display_name: None,
+            uri: Uri {
+                scheme: Some(Scheme::Sip),
+                host_with_port: (*SERVER_ADDR).into(),
+                auth: Some(Auth{
+                    user: USERNAME.into(),
+                    password: None,
+                }),
+                ..Default::default()
+            },
+            params: vec![self.from_tag.clone()],
+        }.into());
+        headers.push(CallId::from(self.call_id.clone()).into());
+        headers.push(To{
+            display_name: None,
+            uri: Uri {
+                scheme: Some(Scheme::Sip),
+                host_with_port: (*SERVER_ADDR).into(),
+                auth: Some(Auth{
+                    user: USERNAME.into(),
+                    password: None,
+                }),
+                ..Default::default()
+            },
+            params: vec![],
+        }.into());
+        headers.push(Contact{
+            display_name: None,
+            uri: Uri {
+                scheme: Some(Scheme::Sip),
+                host_with_port: (*CLIENT_ADDR).into(),
+                auth: Some(Auth{
+                    user: USERNAME.into(),
+                    password: None,
+                }),
+                ..Default::default()
+            },
+            params: vec![Param::Q("1".into())],
+        }.into());
+        headers.push(Allow::from(Method::all()).into());
+        headers.push(Expires::from(3600).into());
+        headers.push(ContentLength::from(0).into());
+        headers.push(MaxForwards::from(70).into());
+
+        Ok(Request {
+            method: Method::Register,
+            uri: Uri {
+                scheme: Some(Scheme::Sip),
+                host_with_port: (*SERVER_ADDR).into(),
+                ..Default::default()
+            },
+            headers,
+            version: Version::V2,
+            body: vec![],
+        })
     }
 }
