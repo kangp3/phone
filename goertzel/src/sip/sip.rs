@@ -1,4 +1,4 @@
-use std::collections::hash_map::{Entry, OccupiedEntry};
+use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::error::Error;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
