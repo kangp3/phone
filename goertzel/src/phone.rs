@@ -57,6 +57,8 @@ pub struct Phone {
 
     sip_send_ch: mpsc::Sender<SipMessage>,
     sip_txn_ch: mpsc::Receiver<sip::Txn>,
+
+    sip_txn: Option<sip::Txn>,
 }
 
 impl Phone {
@@ -104,6 +106,8 @@ impl Phone {
 
             sip_send_ch,
             sip_txn_ch,
+
+            sip_txn: None,
         })
     }
 
@@ -166,10 +170,18 @@ impl Phone {
                     let mut hook_ch = self.hook_ch.subscribe();
 
                     self.state = loop {
-                        match hook_ch.recv().await {
-                            Ok(SwitchHook::ON) => {},
-                            Ok(SwitchHook::OFF) => break State::Connected(Dial::Await),
-                            Err(e) => break State::Connected(Dial::Error(Box::new(e))),
+                        select! {
+                            txn = self.sip_txn_ch.recv() => {
+                                let txn = txn.ok_or("txn ch closed")?;
+                                self.sip_txn = Some(txn);
+                                debug!("GOT A TXN!");
+                                break State::Connected(Dial::Ringing);
+                            },
+                            hook_evt = hook_ch.recv() => match hook_evt {
+                                Ok(SwitchHook::ON) => {},
+                                Ok(SwitchHook::OFF) => break State::Connected(Dial::Await),
+                                Err(e) => break State::Connected(Dial::Error(Box::new(e))),
+                            },
                         }
                     };
                 }
@@ -177,6 +189,15 @@ impl Phone {
                     debug!("ringing");
                     let mut hook_ch = self.hook_ch.subscribe();
                     let ring_handle = ring::ring_phone()?;
+
+                    let txn = self.sip_txn.as_mut().ok_or("missing txn in ringing state")?;
+                    let msg = txn.rx_ch.recv().await.ok_or("closed rx channel in ringing")?;
+                    debug!("MSG?? {}", msg);
+                    let resp = match msg {
+                        SipMessage::Request(req) => txn.response_to(req, rsip::StatusCode::Ringing, vec![])?,
+                        SipMessage::Response(_) => Err("unexpected response")?,
+                    };
+                    txn.tx_ch.send(rsip::SipMessage::Response(resp)).await?;
 
                     self.state = loop {
                         match hook_ch.recv().await {

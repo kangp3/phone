@@ -14,7 +14,7 @@ use rsip::headers::{auth, CallId, ContentLength, Expires, MaxForwards, UserAgent
 use rsip::param::OtherParam;
 use rsip::prelude::ToTypedHeader;
 use rsip::typed::{Allow, Authorization, CSeq, Contact, From, To, Via};
-use rsip::{Auth, Header, Headers, Method, Param, Request, Scheme, SipMessage, StatusCode, Transport, Uri, Version};
+use rsip::{Auth, Header, Headers, Method, Param, Request, Response, Scheme, SipMessage, StatusCode, Transport, Uri, Version};
 use tokio::sync::{mpsc, RwLock, RwLockWriteGuard};
 
 
@@ -78,7 +78,8 @@ pub async fn register(out_ch: mpsc::Sender<SipMessage>) -> Result<(), Box<dyn Er
             req
         });
         txn.tx_ch.send(msg).await?;
-        match txn.rx_ch.recv().await.ok_or("closed rx channel")? {
+        let msg = txn.rx_ch.recv().await.ok_or("closed rx channel")?;
+        match msg {
             SipMessage::Request(_) => Err("expected 200 response to authed register, got request")?,
             SipMessage::Response(r) =>
                 (r.status_code == StatusCode::OK).then_some(()).ok_or("response status not 200")?,
@@ -191,9 +192,31 @@ impl Txn {
         })
     }
 
+    pub fn response_to(&self, req: Request, status_code: StatusCode, body: Vec<u8>) -> Result<Response, Box<dyn Error>> {
+        let mut headers: Headers = Default::default();
+        for header in req.headers {
+            match header {
+                h@Header::CallId(_) |
+                h@Header::CSeq(_) |
+                h@Header::From(_) |
+                h@Header::To(_) |
+                h@Header::Via(_) => headers.push(h),
+                _ => {},
+            }
+        }
+        headers.push(ContentLength::from(body.len() as u32).into());
+
+        Ok(Response{
+            status_code,
+            version: Version::V2,
+            headers,
+            body,
+        })
+    }
+
     fn new_request(&mut self, method: Method, body: Vec<u8>) -> Result<Request, Box<dyn Error>> {
         self.cseq += 1;
-        let branch: String = format!("{}{}", BRANCH_PREFIX, rand_chars(&mut thread_rng(), 10));
+        let branch: String = format!("{}{}", BRANCH_PREFIX, rand_chars(&mut thread_rng(), 32));
 
         let mut headers: Headers = Default::default();
         headers.push(CSeq{ seq: self.cseq, method }.into());
@@ -241,7 +264,7 @@ impl Txn {
             display_name: Some(USERNAME.into()),
             uri: Uri {
                 scheme: Some(Scheme::Sip),
-                host_with_port: (*SERVER_ADDR).into(),
+                host_with_port: (*CLIENT_ADDR).into(),
                 auth: Some(Auth{
                     user: USERNAME.into(),
                     password: None,
@@ -266,13 +289,7 @@ impl Txn {
         })
     }
 
-    fn register_request(&mut self) -> Result<Request, Box<dyn Error>> {
-        let mut req = self.new_request(Method::Register, vec![])?;
-        req.headers.push(Allow::from(Method::all()).into());
-        Ok(req)
-    }
-
-    fn add_auth_to_request(&self, req: &mut Request, opaque: Option<String>, nonce: String) {
+    pub fn add_auth_to_request(&self, req: &mut Request, opaque: Option<String>, nonce: String) {
         let cnonce = format!("{}/{}", ms_since_epoch(), rand_chars(&mut thread_rng(), 16));
         // TOOD(peter): Actually track this?
         let nc = 1;
@@ -297,5 +314,11 @@ impl Txn {
             qop: Some(AuthQop::Auth { cnonce, nc }),
         }.into());
         req.headers.push(Expires::from(3600).into());
+    }
+
+    pub fn register_request(&mut self) -> Result<Request, Box<dyn Error>> {
+        let mut req = self.new_request(Method::Register, vec![])?;
+        req.headers.push(Allow::from(Method::all()).into());
+        Ok(req)
     }
 }
