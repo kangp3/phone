@@ -55,8 +55,8 @@ pub struct Phone {
     pub hook_ch: broadcast::Sender<SwitchHook>,
     pub pulse_ch: broadcast::Sender<u8>,
 
-    sip_send_ch: Option<mpsc::Sender<SipMessage>>,
-    sip_txn_ch: Option<mpsc::Receiver<sip::Txn>>,
+    sip_send_ch: mpsc::Sender<SipMessage>,
+    sip_txn_ch: mpsc::Receiver<sip::Txn>,
 }
 
 impl Phone {
@@ -79,10 +79,10 @@ impl Phone {
             (false, false) => State::Disconnected(WiFi::Await),
         };
 
-        let (sip_send_ch, sip_txn_ch) = if !has_internet { (None, None) } else {
-            let (sip_send_ch, sip_txn_ch) = sip::socket::bind().await?;
+        let (sip_send_ch, sip_txn_ch) = sip::socket::bind().await?;
+        if has_internet {
+            debug!("Registering to SIP server");
             sip::register(sip_send_ch.clone()).await?;
-            (Some(sip_send_ch), Some(sip_txn_ch))
         };
 
         Ok(Self {
@@ -279,7 +279,10 @@ impl Phone {
                         }
                         has_internet = do_i_have_internet() => {
                             match has_internet {
-                                Ok(true) => Some(State::Connected(Dial::OnHook)),
+                                Ok(true) => match sip::register(self.sip_send_ch.clone()).await {
+                                    Ok(_) => Some(State::Connected(Dial::OnHook)),
+                                    Err(e) => Some(State::Disconnected(WiFi::Error(e))),
+                                },
                                 Ok(false) => None,
                                 Err(e) => Some(State::Disconnected(WiFi::Error(e))),
                             }
@@ -304,7 +307,10 @@ impl Phone {
 
                     self.state = select! {
                         wifi_evt = self.get_wifi_creds() => match wifi_evt {
-                            Ok(_) => State::Connected(Dial::Await),
+                            Ok(_) => match sip::register(self.sip_send_ch.clone()).await {
+                                Ok(_) => State::Connected(Dial::Await),
+                                Err(e) => State::Disconnected(WiFi::Error(e)),
+                            },
                             Err(e) => State::Disconnected(WiFi::Error(e)),
                         },
                         shk_evt = hook_ch.recv() => match shk_evt {
