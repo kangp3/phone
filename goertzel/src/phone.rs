@@ -1,5 +1,4 @@
 use std::error::Error;
-use std::net::SocketAddr;
 
 use rsip::SipMessage;
 use tokio::process::Command;
@@ -56,8 +55,8 @@ pub struct Phone {
     pub hook_ch: broadcast::Sender<SwitchHook>,
     pub pulse_ch: broadcast::Sender<u8>,
 
-    sip_send_ch: Option<mpsc::Sender<(SocketAddr, SipMessage)>>,
-    sip_recv_ch: Option<broadcast::Sender<(SocketAddr, SipMessage)>>,
+    sip_send_ch: Option<mpsc::Sender<SipMessage>>,
+    sip_txn_ch: Option<mpsc::Receiver<sip::Txn>>,
 }
 
 impl Phone {
@@ -80,11 +79,10 @@ impl Phone {
             (false, false) => State::Disconnected(WiFi::Await),
         };
 
-        let (sip_send_ch, sip_recv_ch) = if !has_internet { (None, None) } else {
-            let (sip_send_ch, sip_recv_ch) = sip::socket::bind().await?;
-            let sip_ch = sip_recv_ch.subscribe();
-            sip::register(sip_send_ch.clone(), sip_ch).await?;
-            (Some(sip_send_ch), Some(sip_recv_ch))
+        let (sip_send_ch, sip_txn_ch) = if !has_internet { (None, None) } else {
+            let (sip_send_ch, sip_txn_ch) = sip::socket::bind().await?;
+            sip::register(sip_send_ch.clone()).await?;
+            (Some(sip_send_ch), Some(sip_txn_ch))
         };
 
         Ok(Self {
@@ -105,7 +103,7 @@ impl Phone {
             pulse_ch,
 
             sip_send_ch,
-            sip_recv_ch,
+            sip_txn_ch,
         })
     }
 

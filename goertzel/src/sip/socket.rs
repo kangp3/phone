@@ -1,44 +1,88 @@
 use core::str;
 use std::error::Error;
-use std::net::SocketAddr;
 
-use rsip::SipMessage;
+use rsip::{Method, SipMessage};
 use tokio::net::UdpSocket;
 use tokio::select;
-use tokio::sync::{broadcast, mpsc};
+use tokio::sync::mpsc;
 
 use crate::asyncutil::and_log_err;
+use crate::sip::{Txn, SERVER_ADDR};
+
+use super::TXN_MAILBOXES;
 
 
 const BUF_SIZE: usize = 4096;
 const MESSAGE_CHANNEL_SIZE: usize = 64;
 
-pub async fn bind() -> Result<(mpsc::Sender<(SocketAddr, SipMessage)>, broadcast::Sender<(SocketAddr, SipMessage)>), Box<dyn Error>> {
+pub async fn bind() -> Result<(mpsc::Sender<SipMessage>, mpsc::Receiver<Txn>), Box<dyn Error>> {
     let socket = UdpSocket::bind("0.0.0.0:5060").await?;
 
-    let (inbound_ch, _) = broadcast::channel(MESSAGE_CHANNEL_SIZE);
+    let (inbound_trx_send_ch, inbound_trx_recv_ch) = mpsc::channel(MESSAGE_CHANNEL_SIZE);
     let (outbound_ch, mut outbound_recv) = mpsc::channel(MESSAGE_CHANNEL_SIZE);
 
-    let inbound_ch2 = inbound_ch.clone();
+    let outbound_ch2 = outbound_ch.clone();
+    let txn_mailboxes = TXN_MAILBOXES.clone();
     tokio::spawn(and_log_err("sip inbound", async move {
         loop {
             let mut buf = vec![0u8; BUF_SIZE];
             select! {
                 recv = socket.recv_from(&mut buf) => {
-                    let (len, addr) = recv?;
+                    let (len, _) = recv?;
                     buf.truncate(len);
+                    // TODO(peter): Throw away messages if they don't try_from instead of crashing
                     let msg = SipMessage::try_from(str::from_utf8(&buf)?)?;
-                    let _ = inbound_ch2.send((addr, msg));
+                    let headers = match msg {
+                        SipMessage::Request(ref req) => &req.headers,
+                        SipMessage::Response(ref resp) => &resp.headers,
+                    };
+                    let mut call_id = None;
+                    for header in headers.iter() {
+                        match &header {
+                            rsip::Header::CallId(h) => {
+                                call_id = Some((*h).to_string());
+                                break;
+                            }
+                            _ => {},
+                        }
+                    }
+                    // TODO(peter): Throw away messages if they don't try_from instead of crashing
+                    let call_id = call_id.ok_or("missing call id")?;
+                    {
+                        let mut mailboxes = txn_mailboxes.write().await;
+                        match mailboxes.get(&call_id) {
+                            Some(mailbox) => { mailbox.try_send(msg)?; }
+                            None => {
+                                match msg {
+                                    SipMessage::Request(ref req) => {
+                                        match req.method() {
+                                            Method::Invite => {
+                                                let (rx_send_ch, rx_recv_ch) = mpsc::channel(MESSAGE_CHANNEL_SIZE);
+                                                let txn = Txn::from_req(req.clone(), outbound_ch2.clone(), rx_recv_ch)?;
+
+                                                rx_send_ch.try_send(msg)?;
+                                                mailboxes.insert(call_id, rx_send_ch);
+
+                                                inbound_trx_send_ch.try_send(txn)?;
+                                            },
+                                            _ => Err("got non-invite request with no active txn")?,
+                                        }
+                                    },
+                                    SipMessage::Response(_) => Err("got a response with no active txn")?,
+                                }
+                            }
+                        }
+                    }
                 },
                 send = outbound_recv.recv() => {
-                    let (addr, msg): (SocketAddr, SipMessage) = send.ok_or("socket send channel closed")?;
+                    let msg = send.ok_or("socket send channel closed")?;
                     let msg_bytes: Vec<u8> = msg.into();
-                    let len = socket.send_to(&msg_bytes, addr).await?;
+                    let len = socket.send_to(&msg_bytes, *SERVER_ADDR).await?;
                     (len == msg_bytes.len()).then_some(()).ok_or("byte len does not match")?;
                 },
             }
         }
     }));
 
-    Ok((outbound_ch, inbound_ch))
+    Ok((outbound_ch, inbound_trx_recv_ch))
 }
