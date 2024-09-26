@@ -5,6 +5,7 @@ use rsip::{Method, SipMessage};
 use tokio::net::UdpSocket;
 use tokio::select;
 use tokio::sync::mpsc;
+use tracing::debug;
 
 use crate::asyncutil::and_log_err;
 use crate::sip::{Txn, SERVER_ADDR};
@@ -32,6 +33,7 @@ pub async fn bind() -> Result<(mpsc::Sender<SipMessage>, mpsc::Receiver<Txn>), B
                     buf.truncate(len);
                     // TODO(peter): Throw away messages if they don't try_from instead of crashing
                     let msg = SipMessage::try_from(str::from_utf8(&buf)?)?;
+                    debug!("GOT MESSAGE: {}", msg);
                     let headers = match msg {
                         SipMessage::Request(ref req) => &req.headers,
                         SipMessage::Response(ref resp) => &resp.headers,
@@ -55,8 +57,11 @@ pub async fn bind() -> Result<(mpsc::Sender<SipMessage>, mpsc::Receiver<Txn>), B
                             Some(mailbox) => { mailbox.try_send(msg.clone())?; }
                             None => match msg {
                                 SipMessage::Request(ref req) => match req.method() {
-                                    Method::Invite => should_create_txn = true,
-                                    _ => Err("got non-invite request with no active txn")?,
+                                    Method::Invite => {
+                                        should_create_txn = true;
+                                    },
+                                    Method::Ack => {},
+                                    _ => Err(format!("got non-invite request with no active txn: {}", req))?,
                                 },
                                 SipMessage::Response(_) => Err("got a response with no active txn")?,
                             }
@@ -79,7 +84,7 @@ pub async fn bind() -> Result<(mpsc::Sender<SipMessage>, mpsc::Receiver<Txn>), B
                         {
                             let mailboxes = txn_mailboxes.read().await;
                             match mailboxes.get(&call_id) {
-                                Some(mailbox) => mailbox.try_send(msg)?,
+                                Some(mailbox) => mailbox.send(msg).await?,
                                 None => Err("should have a mailbox by now")?,
                             };
                         }
