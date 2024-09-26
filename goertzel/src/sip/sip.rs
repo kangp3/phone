@@ -1,3 +1,4 @@
+use std::collections::hash_map::{Entry, OccupiedEntry};
 use std::collections::HashMap;
 use std::error::Error;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
@@ -13,8 +14,8 @@ use rsip::headers::{auth, CallId, ContentLength, Expires, MaxForwards, UserAgent
 use rsip::param::OtherParam;
 use rsip::prelude::ToTypedHeader;
 use rsip::typed::{Allow, Authorization, CSeq, Contact, From, To, Via};
-use rsip::{Auth, Header, Headers, Method, Param, Request, Scheme, SipMessage, Transport, Uri, Version};
-use tokio::sync::{mpsc, RwLock};
+use rsip::{Auth, Header, Headers, Method, Param, Request, Scheme, SipMessage, StatusCode, Transport, Uri, Version};
+use tokio::sync::{mpsc, RwLock, RwLockWriteGuard};
 use tracing::debug;
 
 
@@ -48,15 +49,15 @@ fn md5(s: String) -> String {
 }
 
 pub async fn register(out_ch: mpsc::Sender<SipMessage>) -> Result<(), Box<dyn Error>> {
-    // TODO(peter): Figure out how to get the rx channel into a mailbox while avoiding deadlock on
-    // the TXN_MAILBOXES
-    debug!("hello??");
-    let mut txn = Txn::new(out_ch).await;
+    let txn_mailboxes = TXN_MAILBOXES.clone();
+
+    let mut txn = {
+        let mailboxes = txn_mailboxes.write().await;
+        Txn::new(out_ch, mailboxes)
+    };
     let msg = SipMessage::Request(txn.register_request()?);
-    debug!("{}", msg);
     txn.tx_ch.send(msg).await?;
     let msg = txn.rx_ch.recv().await.ok_or("closed rx channel")?;
-    debug!("{}", msg);
     if let SipMessage::Response(r) = msg {
         let mut opaque = None;
         let mut nonce = String::new();
@@ -72,10 +73,12 @@ pub async fn register(out_ch: mpsc::Sender<SipMessage>) -> Result<(), Box<dyn Er
             }
         }
         let msg = SipMessage::Request(txn.authed_register_request(opaque, nonce)?);
-        debug!("AUTH REQ: {}", msg);
         txn.tx_ch.send(msg).await?;
-        let msg = txn.rx_ch.recv().await.ok_or("closed rx channel")?;
-        debug!("{}", msg);
+        match txn.rx_ch.recv().await.ok_or("closed rx channel")? {
+            SipMessage::Request(_) => Err("expected 200 response to authed register, got request")?,
+            SipMessage::Response(r) =>
+                (r.status_code == StatusCode::OK).then_some(()).ok_or("response status not 200")?,
+        }
     }
     Ok(())
 }
@@ -101,16 +104,14 @@ fn ms_since_epoch() -> u128 {
 }
 
 impl Txn {
-    pub async fn new(tx_ch: mpsc::Sender<SipMessage>) -> Self {
+    pub fn new(tx_ch: mpsc::Sender<SipMessage>, mut mailboxes: RwLockWriteGuard<'_, HashMap<String, mpsc::Sender<SipMessage>>>) -> Self {
         let (rx_send_ch, rx_ch) = mpsc::channel(MESSAGE_CHANNEL_SIZE);
         let mut rng = thread_rng();
         let call_id = CallId::from(format!("{}/{}", ms_since_epoch(), rand_chars(&mut rng, 16)));
         let from_tag = Param::Tag(rand_chars(&mut rng, 16).into());
         let to_tag = None;
 
-        {
-            TXN_MAILBOXES.clone().write().await.insert(call_id.to_string(), rx_send_ch);
-        }
+        mailboxes.insert(call_id.to_string(), rx_send_ch);
 
         Txn {
             tx_ch,
@@ -123,7 +124,9 @@ impl Txn {
         }
     }
 
-    pub fn from_req(req: Request, tx_ch: mpsc::Sender<SipMessage>, rx_ch: mpsc::Receiver<SipMessage>) -> Result<Self, Box<dyn Error>> {
+    pub fn from_req(req: Request, tx_ch: mpsc::Sender<SipMessage>, mut mailboxes: RwLockWriteGuard<'_, HashMap<String, mpsc::Sender<SipMessage>>>) -> Result<Self, Box<dyn Error>> {
+        let (rx_send_ch, rx_ch) = mpsc::channel(MESSAGE_CHANNEL_SIZE);
+
         let mut cseq: Option<u32> = None;
         let mut call_id: Option<CallId> = None;
         let mut from_tag: Option<Param> = None;
@@ -164,13 +167,22 @@ impl Txn {
             }
         }
 
+        let cseq = cseq.ok_or("missing cseq")?;
+        let call_id = call_id.ok_or("missing call_id")?;
+        let from_tag = from_tag.ok_or("missing from tag")?;
+
+        match mailboxes.entry(call_id.to_string()) {
+            Entry::Occupied(_) => Err("mailbox already exists in map")?,
+            Entry::Vacant(e) => e.insert(rx_send_ch),
+        };
+
         Ok(Txn {
             rx_ch,
             tx_ch,
 
-            cseq: cseq.ok_or("missing cseq")?,
-            call_id: call_id.ok_or("missing call_id")?,
-            from_tag: from_tag.ok_or("missing from tag")?,
+            cseq,
+            call_id,
+            from_tag,
             to_tag,
         })
     }

@@ -48,29 +48,43 @@ pub async fn bind() -> Result<(mpsc::Sender<SipMessage>, mpsc::Receiver<Txn>), B
                     }
                     // TODO(peter): Throw away messages if they don't try_from instead of crashing
                     let call_id = call_id.ok_or("missing call id")?;
+                    let mut should_create_txn = false;
                     {
-                        let mut mailboxes = txn_mailboxes.write().await;
+                        let mailboxes = txn_mailboxes.read().await;
                         match mailboxes.get(&call_id) {
-                            Some(mailbox) => { mailbox.try_send(msg)?; }
-                            None => {
-                                match msg {
-                                    SipMessage::Request(ref req) => {
-                                        match req.method() {
-                                            Method::Invite => {
-                                                let (rx_send_ch, rx_recv_ch) = mpsc::channel(MESSAGE_CHANNEL_SIZE);
-                                                let txn = Txn::from_req(req.clone(), outbound_ch2.clone(), rx_recv_ch)?;
-
-                                                rx_send_ch.try_send(msg)?;
-                                                mailboxes.insert(call_id, rx_send_ch);
-
-                                                inbound_trx_send_ch.try_send(txn)?;
-                                            },
-                                            _ => Err("got non-invite request with no active txn")?,
-                                        }
-                                    },
-                                    SipMessage::Response(_) => Err("got a response with no active txn")?,
+                            Some(mailbox) => { mailbox.try_send(msg.clone())?; }
+                            None => match msg {
+                                SipMessage::Request(ref req) => match req.method() {
+                                    Method::Invite => should_create_txn = true,
+                                    _ => Err("got non-invite request with no active txn")?,
+                                },
+                                SipMessage::Response(_) => Err("got a response with no active txn")?,
+                            }
+                        }
+                    }
+                    if should_create_txn {
+                        let txn = if let SipMessage::Request(ref req) = msg {
+                            let mailboxes = txn_mailboxes.write().await;
+                            match Txn::from_req(req.clone(), outbound_ch2.clone(), mailboxes) {
+                                Ok(txn) => Some(txn),
+                                Err(e) => {
+                                    if e.to_string() == "mailbox already exists in map" {
+                                        None
+                                    } else {
+                                        Err(e)?
+                                    }
                                 }
                             }
+                        } else { None };
+                        {
+                            let mailboxes = txn_mailboxes.read().await;
+                            match mailboxes.get(&call_id) {
+                                Some(mailbox) => mailbox.try_send(msg)?,
+                                None => Err("should have a mailbox by now")?,
+                            };
+                        }
+                        if let Some(txn) = txn {
+                            inbound_trx_send_ch.send(txn).await?;
                         }
                     }
                 },
