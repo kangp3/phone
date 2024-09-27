@@ -57,10 +57,7 @@ pub async fn bind() -> Result<(mpsc::Sender<SipMessage>, mpsc::Receiver<Txn>), B
                             Some(mailbox) => { mailbox.try_send(msg.clone())?; }
                             None => match msg {
                                 SipMessage::Request(ref req) => match req.method() {
-                                    Method::Invite => {
-                                        should_create_txn = true;
-                                    },
-                                    Method::Ack => {},
+                                    Method::Invite => should_create_txn = true,
                                     _ => Err(format!("got non-invite request with no active txn: {}", req))?,
                                 },
                                 SipMessage::Response(_) => Err("got a response with no active txn")?,

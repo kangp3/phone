@@ -192,7 +192,6 @@ impl Phone {
 
                     let txn = self.sip_txn.as_mut().ok_or("missing txn in ringing state")?;
                     let msg = txn.rx_ch.recv().await.ok_or("closed rx channel in ringing")?;
-                    debug!("MSG?? {}", msg);
                     let resp = match msg {
                         SipMessage::Request(req) => txn.response_to(req, rsip::StatusCode::Ringing, vec![])?,
                         SipMessage::Response(_) => Err("unexpected response")?,
@@ -200,10 +199,23 @@ impl Phone {
                     txn.tx_ch.send(rsip::SipMessage::Response(resp)).await?;
 
                     self.state = loop {
-                        match hook_ch.recv().await {
-                            Ok(SwitchHook::ON) => {},
-                            Ok(SwitchHook::OFF) => break State::Connected(Dial::Connected),
-                            Err(e) => break State::Connected(Dial::Error(Box::new(e))),
+                        select! {
+                            msg = txn.rx_ch.recv() => match msg.ok_or("closed rx channel in ringing")? {
+                                SipMessage::Request(req) => match req.method() {
+                                    rsip::Method::Cancel => {
+                                        let resp = txn.response_to(req, rsip::StatusCode::RequestTerminated, vec![])?;
+                                        txn.tx_ch.send(rsip::SipMessage::Response(resp)).await?;
+                                        break State::Connected(Dial::OnHook)
+                                    },
+                                    _ => Err(format!("got non-cancel request during ringing: {}", req))?,
+                                },
+                                SipMessage::Response(_) => Err("got unexpected response during ringing")?,
+                            },
+                            hook_evt = hook_ch.recv() => match hook_evt {
+                                Ok(SwitchHook::ON) => {},
+                                Ok(SwitchHook::OFF) => break State::Connected(Dial::Connected),
+                                Err(e) => break State::Connected(Dial::Error(Box::new(e))),
+                            },
                         }
                     };
 
