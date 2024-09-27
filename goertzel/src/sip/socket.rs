@@ -92,6 +92,7 @@ pub async fn bind() -> Result<(mpsc::Sender<SipMessage>, mpsc::Receiver<Txn>), B
                 },
                 send = outbound_recv.recv() => {
                     let msg = send.ok_or("socket send channel closed")?;
+                    debug!("SENT MESSAGE: {}", msg);
                     let msg_bytes: Vec<u8> = msg.into();
                     let len = socket.send_to(&msg_bytes, *SERVER_ADDR).await?;
                     (len == msg_bytes.len()).then_some(()).ok_or("byte len does not match")?;

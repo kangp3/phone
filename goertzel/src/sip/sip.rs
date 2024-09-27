@@ -5,6 +5,7 @@ use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::{Arc, LazyLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use itertools::Itertools;
 use local_ip_address::local_ip;
 use md5::{Md5, Digest};
 use rand::distributions::Alphanumeric;
@@ -13,9 +14,11 @@ use rsip::headers::auth::{Algorithm, AuthQop};
 use rsip::headers::{auth, CallId, ContentLength, Expires, MaxForwards, UserAgent};
 use rsip::param::OtherParam;
 use rsip::prelude::ToTypedHeader;
-use rsip::typed::{Allow, Authorization, CSeq, Contact, From, To, Via};
+use rsip::typed::{Allow, Authorization, CSeq, Contact, ContentType, From, MediaType, To, Via};
 use rsip::{Auth, Header, Headers, Method, Param, Request, Response, Scheme, SipMessage, StatusCode, Transport, Uri, Version};
+use sdp_rs::{MediaDescription, SessionDescription};
 use tokio::sync::{mpsc, RwLock, RwLockWriteGuard};
+use vec1::Vec1;
 
 
 const MESSAGE_CHANNEL_SIZE: usize = 64;
@@ -31,12 +34,23 @@ const BRANCH_PREFIX: &str = "z9hG4bK";
 const MAX_FORWARDS: u32 = 70;
 
 // TODO(peter): Make these configurable
-pub static SERVER_ADDR: LazyLock<SocketAddr> = LazyLock::new(|| {
-    SocketAddr::new(IpAddr::V4(Ipv4Addr::new(192, 168, 12, 182)), 5060)
-});
-pub static CLIENT_ADDR: LazyLock<SocketAddr> = LazyLock::new(|| {
-    SocketAddr::new(local_ip().unwrap(), 5060)
-});
+pub static SERVER_ADDR: LazyLock<SocketAddr> = LazyLock::new(
+    || SocketAddr::new(IpAddr::V4(Ipv4Addr::new(192, 168, 12, 182)), 5060)
+);
+pub static CLIENT_ADDR: LazyLock<SocketAddr> = LazyLock::new(
+    || SocketAddr::new(local_ip().unwrap(), 5060)
+);
+pub static MY_URI: LazyLock<Uri> = LazyLock::new(
+    || Uri{
+        scheme: Some(Scheme::Sip),
+        auth: Some(Auth{
+            user: USERNAME.into(),
+            password: None,
+        }),
+        host_with_port: (*SERVER_ADDR).into(),
+        ..Default::default()
+    }
+);
 
 pub static TXN_MAILBOXES: LazyLock<Arc<RwLock<HashMap::<String, mpsc::Sender<SipMessage>>>>> = LazyLock::new(|| {
     Arc::new(RwLock::new(HashMap::new()))
@@ -55,7 +69,7 @@ pub async fn register(out_ch: mpsc::Sender<SipMessage>) -> Result<(), Box<dyn Er
         let mailboxes = txn_mailboxes.write().await;
         Txn::new(out_ch, mailboxes)
     };
-    let msg = SipMessage::Request(txn.register_request()?);
+    let msg = SipMessage::Request(txn.register_request());
     txn.tx_ch.send(msg).await?;
     let msg = txn.rx_ch.recv().await.ok_or("closed rx channel")?;
     if let SipMessage::Response(r) = msg {
@@ -73,7 +87,7 @@ pub async fn register(out_ch: mpsc::Sender<SipMessage>) -> Result<(), Box<dyn Er
             }
         }
         let msg = SipMessage::Request({
-            let mut req = txn.register_request()?;
+            let mut req = txn.register_request();
             txn.add_auth_to_request(&mut req, opaque, nonce);
             req
         });
@@ -106,6 +120,10 @@ fn rand_chars(rng: &mut impl Rng, len: usize) -> String {
 
 fn ms_since_epoch() -> u128 {
     SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis()
+}
+
+fn micros_since_epoch() -> u128 {
+    SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_micros()
 }
 
 impl Txn {
@@ -192,7 +210,7 @@ impl Txn {
         })
     }
 
-    pub fn response_to(&self, req: Request, status_code: StatusCode, body: Vec<u8>) -> Result<Response, Box<dyn Error>> {
+    pub fn response_to(&self, req: Request, status_code: StatusCode, body: Vec<u8>) -> Response {
         let mut headers: Headers = Default::default();
         for header in req.headers {
             match header {
@@ -206,15 +224,15 @@ impl Txn {
         }
         headers.push(ContentLength::from(body.len() as u32).into());
 
-        Ok(Response{
+        Response{
             status_code,
             version: Version::V2,
             headers,
             body,
-        })
+        }
     }
 
-    fn new_request(&mut self, method: Method, body: Vec<u8>) -> Result<Request, Box<dyn Error>> {
+    fn new_request(&mut self, method: Method, body: Vec<u8>) -> Request {
         self.cseq += 1;
         let branch: String = format!("{}{}", BRANCH_PREFIX, rand_chars(&mut thread_rng(), 32));
 
@@ -233,33 +251,7 @@ impl Txn {
             ],
         }.into());
         headers.push(UserAgent::from(format!("{}/{}", USER_AGENT, UA_VERSION)).into());
-        headers.push(From{
-            display_name: Some(USERNAME.into()),
-            uri: Uri {
-                scheme: Some(Scheme::Sip),
-                host_with_port: (*SERVER_ADDR).into(),
-                auth: Some(Auth{
-                    user: USERNAME.into(),
-                    password: None,
-                }),
-                ..Default::default()
-            },
-            params: vec![self.from_tag.clone()],
-        }.into());
         headers.push(self.call_id.clone().into());
-        headers.push(To{
-            display_name: None,
-            uri: Uri {
-                scheme: Some(Scheme::Sip),
-                host_with_port: (*SERVER_ADDR).into(),
-                auth: Some(Auth{
-                    user: USERNAME.into(),
-                    password: None,
-                }),
-                ..Default::default()
-            },
-            params: vec![self.to_tag.clone()].into_iter().filter_map(|t| t).collect(),
-        }.into());
         headers.push(Contact{
             display_name: Some(USERNAME.into()),
             uri: Uri {
@@ -276,7 +268,7 @@ impl Txn {
         headers.push(MaxForwards::from(MAX_FORWARDS).into());
         headers.push(ContentLength::from(body.len() as u32).into());
 
-        Ok(Request {
+        Request {
             method,
             uri: Uri {
                 scheme: Some(Scheme::Sip),
@@ -286,7 +278,23 @@ impl Txn {
             version: Version::V2,
             headers,
             body,
-        })
+        }
+    }
+
+    fn new_request_from_to(&mut self, method: Method, from: Uri, to: Uri, body: Vec<u8>) -> Request {
+        let mut req = self.new_request(method, body);
+        req.headers.push(From{
+            display_name: None,
+            uri: from,
+            params: vec![self.from_tag.clone()],
+        }.into());
+        req.headers.push(To{
+            display_name: None,
+            uri: to,
+            params: vec![self.to_tag.clone()].into_iter().filter_map(|t| t).collect(),
+        }.into());
+
+        req
     }
 
     pub fn add_auth_to_request(&self, req: &mut Request, opaque: Option<String>, nonce: String) {
@@ -316,9 +324,101 @@ impl Txn {
         req.headers.push(Expires::from(3600).into());
     }
 
-    pub fn register_request(&mut self) -> Result<Request, Box<dyn Error>> {
-        let mut req = self.new_request(Method::Register, vec![])?;
+    pub fn register_request(&mut self) -> Request {
+        let mut req = self.new_request_from_to(Method::Register, (*MY_URI).clone(), (*MY_URI).clone(), vec![]);
         req.headers.push(Allow::from(Method::all()).into());
-        Ok(req)
+        req
+    }
+
+    pub fn invite_request(&mut self, to: Uri) -> Request {
+        let sess_id = micros_since_epoch().to_string();
+        let body = SessionDescription{
+            version: sdp_rs::lines::Version::V0,
+            origin: sdp_rs::lines::Origin{
+                username: "-".to_string(),
+                sess_id: sess_id.clone(),
+                sess_version: sess_id,
+                nettype: sdp_rs::lines::common::Nettype::In,
+                addrtype: sdp_rs::lines::common::Addrtype::Ip4,
+                unicast_address: (*CLIENT_ADDR).ip(),
+            },
+            session_name: sdp_rs::lines::SessionName::from(USER_AGENT.to_string()),
+            session_info: None,
+            uri: None,
+            emails: vec![],
+            phones: vec![],
+            connection: Some(sdp_rs::lines::Connection{
+                nettype: sdp_rs::lines::common::Nettype::In,
+                addrtype: sdp_rs::lines::common::Addrtype::Ip4,
+                connection_address: (*CLIENT_ADDR).ip().into(),
+            }),
+            bandwidths: vec![],
+            times: Vec1::new(sdp_rs::Time{
+                active: sdp_rs::lines::Active { start: 0, stop: 0 },
+                repeat: vec![],
+                zone: None,
+            }),
+            key: None,
+            attributes: vec![],
+            media_descriptions: vec![MediaDescription{
+                media: sdp_rs::lines::Media{
+                    media: sdp_rs::lines::media::MediaType::Audio,
+                    port: 19512,
+                    num_of_ports: None,
+                    proto: sdp_rs::lines::media::ProtoType::RtpAvp,
+                    fmt: vec![0, 101].into_iter().map(|v| v.to_string()).join(" "),
+                },
+                info: None,
+                connections: vec![],
+                bandwidths: vec![],
+                key: None,
+                attributes: vec![
+                    sdp_rs::lines::Attribute::Rtpmap(sdp_rs::lines::attribute::Rtpmap {
+                        payload_type: 0,
+                        encoding_name: "PCMU".into(),
+                        clock_rate: 8000,
+                        encoding_params: None,
+                    }),
+                    sdp_rs::lines::Attribute::Rtpmap(sdp_rs::lines::attribute::Rtpmap {
+                        payload_type: 101,
+                        encoding_name: "telephone-event".into(),
+                        clock_rate: 8000,
+                        encoding_params: None,
+                    }),
+                    sdp_rs::lines::Attribute::Other("fmtp".into(), Some("101 0-16".into())),
+                    sdp_rs::lines::Attribute::Ptime(20.0),
+                    sdp_rs::lines::Attribute::Maxptime(140.0),
+                    sdp_rs::lines::Attribute::Sendrecv,
+                ],
+            }],
+        };
+        let mut req = self.new_request_from_to(
+            Method::Invite,
+            (*MY_URI).clone(),
+            to.clone(),
+            body.to_string().into_bytes(),
+        );
+        req.uri = to;
+        req.headers.push(ContentType(MediaType::Sdp(vec![])).into());
+        req
+    }
+
+    pub fn ack_request(&mut self, resp: Response) -> Request {
+        let mut req = self.new_request(Method::Ack, vec![]);
+        for header in resp.headers {
+            match header {
+                h@Header::From(_) |
+                h@Header::To(_) => {
+                    req.headers.push(h);
+                },
+                _ => {},
+            }
+        }
+        req
+    }
+
+    pub fn cancel_request(&mut self, to: Uri) -> Request {
+        let req = self.new_request_from_to(Method::Cancel, (*MY_URI).clone(), to, vec![]);
+        req
     }
 }

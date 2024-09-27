@@ -1,11 +1,16 @@
 use std::error::Error;
+use std::time::Duration;
 
+use rsip::prelude::ToTypedHeader;
 use rsip::SipMessage;
 use tokio::process::Command;
 use tokio::select;
 use tokio::sync::{broadcast, mpsc};
+use tokio::time::sleep;
 use tracing::{debug, error, info};
 
+use crate::contacts::CONTACTS;
+use crate::sip::{Txn, TXN_MAILBOXES};
 use crate::{audio, deco, ring, sip};
 use crate::hook::{self, SwitchHook};
 use crate::nettest::do_i_have_internet;
@@ -59,6 +64,8 @@ pub struct Phone {
     sip_txn_ch: mpsc::Receiver<sip::Txn>,
 
     sip_txn: Option<sip::Txn>,
+
+    to_uri: Option<rsip::Uri>,
 }
 
 impl Phone {
@@ -108,6 +115,8 @@ impl Phone {
             sip_txn_ch,
 
             sip_txn: None,
+
+            to_uri: None,
         })
     }
 
@@ -167,6 +176,7 @@ impl Phone {
             match &self.state {
                 State::Connected(Dial::OnHook) => {
                     debug!("phone on hook");
+                    self.sip_txn = None;
                     let mut hook_ch = self.hook_ch.subscribe();
 
                     self.state = loop {
@@ -174,7 +184,6 @@ impl Phone {
                             txn = self.sip_txn_ch.recv() => {
                                 let txn = txn.ok_or("txn ch closed")?;
                                 self.sip_txn = Some(txn);
-                                debug!("GOT A TXN!");
                                 break State::Connected(Dial::Ringing);
                             },
                             hook_evt = hook_ch.recv() => match hook_evt {
@@ -192,10 +201,11 @@ impl Phone {
 
                     let txn = self.sip_txn.as_mut().ok_or("missing txn in ringing state")?;
                     let msg = txn.rx_ch.recv().await.ok_or("closed rx channel in ringing")?;
-                    let resp = match msg {
-                        SipMessage::Request(req) => txn.response_to(req, rsip::StatusCode::Ringing, vec![])?,
+                    let invite = match msg {
+                        SipMessage::Request(req) => req,
                         SipMessage::Response(_) => Err("unexpected response")?,
                     };
+                    let resp = txn.response_to(invite.clone(), rsip::StatusCode::Ringing, vec![]);
                     txn.tx_ch.send(rsip::SipMessage::Response(resp)).await?;
 
                     self.state = loop {
@@ -203,7 +213,7 @@ impl Phone {
                             msg = txn.rx_ch.recv() => match msg.ok_or("closed rx channel in ringing")? {
                                 SipMessage::Request(req) => match req.method() {
                                     rsip::Method::Cancel => {
-                                        let resp = txn.response_to(req, rsip::StatusCode::RequestTerminated, vec![])?;
+                                        let resp = txn.response_to(req, rsip::StatusCode::RequestTerminated, vec![]);
                                         txn.tx_ch.send(rsip::SipMessage::Response(resp)).await?;
                                         break State::Connected(Dial::OnHook)
                                     },
@@ -213,7 +223,12 @@ impl Phone {
                             },
                             hook_evt = hook_ch.recv() => match hook_evt {
                                 Ok(SwitchHook::ON) => {},
-                                Ok(SwitchHook::OFF) => break State::Connected(Dial::Connected),
+                                Ok(SwitchHook::OFF) => {
+                                    // TODO(peter): Include appropriate SDP params in OK
+                                    let resp = txn.response_to(invite, rsip::StatusCode::OK, vec![]);
+                                    txn.tx_ch.send(rsip::SipMessage::Response(resp)).await?;
+                                    break State::Connected(Dial::Connected)
+                                },
                                 Err(e) => break State::Connected(Dial::Error(Box::new(e))),
                             },
                         }
@@ -230,11 +245,60 @@ impl Phone {
                     let tone_handle = TwoToneGen::off_hook(self.audio_out_sample_rate)
                         .send_to(audio_out_ch, self.audio_out_n_channels);
                     let mut dig_ch = deco::de_digs(goertzel_ch, pulse_ch);
+                    self.sip_txn = {
+                        let txn_mailboxes = TXN_MAILBOXES.clone();
+                        let mailboxes = txn_mailboxes.write().await;
+                        Some(Txn::new(self.sip_send_ch.clone(), mailboxes))
+                    };
+                    let txn = self.sip_txn.as_mut().ok_or("how is txn missing here")?;
 
+                    let mut number = String::new();
                     self.state = loop {
                         select! {
+                            _ = sleep(Duration::from_secs(4)), if (*CONTACTS).contains_key(&number) => {
+                                let to = (*CONTACTS).get(&number).ok_or("contact is missing after I EXPLICITLY checked it")?;
+                                self.to_uri = Some(to.clone());
+                                let msg = SipMessage::Request(txn.invite_request(to.clone()));
+                                txn.tx_ch.send(msg).await?;
+                                let msg = txn.rx_ch.recv().await.ok_or("closed rx channel in ringing")?;
+                                match msg {
+                                    SipMessage::Request(_) => Err("unexpected request")?,
+                                    SipMessage::Response(resp) => {
+                                        let mut opaque = None;
+                                        let mut nonce = String::new();
+                                        for header in resp.headers {
+                                            match header {
+                                                rsip::Header::WwwAuthenticate(h) => {
+                                                    let h = h.typed()?;
+                                                    opaque = h.opaque;
+                                                    nonce = h.nonce;
+                                                    break;
+                                                },
+                                                _ => {},
+                                            }
+                                        }
+                                        let msg = SipMessage::Request({
+                                            let mut req = txn.invite_request(to.clone());
+                                            txn.add_auth_to_request(&mut req, opaque, nonce);
+                                            req
+                                        });
+                                        txn.tx_ch.send(msg).await?;
+                                        let msg = txn.rx_ch.recv().await.ok_or("closed rx channel")?;
+                                        match msg {
+                                            SipMessage::Request(_) => Err("expected 200 response to authed invite, got request")?,
+                                            SipMessage::Response(r) => {
+                                                (r.status_code == rsip::StatusCode::Trying).then_some(()).ok_or("response status not 200")?;
+                                                break State::Connected(Dial::DialOut);
+                                            },
+                                        }
+                                    },
+                                };
+                            },
                             dig = dig_ch.recv() => match dig {
-                                Some(dig) => debug!("GOT DIG: {}", dig),
+                                Some(dig) => {
+                                    debug!("GOT DIG: {}", dig);
+                                    number.push((dig + b'0').into());
+                                },
                                 None => break State::Connected(Dial::Error("dig channel died :(".into())),
                             },
                             hook_evt = hook_ch.recv() => match hook_evt {
@@ -249,25 +313,83 @@ impl Phone {
                 }
                 State::Connected(Dial::DialOut) => {
                     debug!("dialed out");
+                    let mut hook_ch = self.hook_ch.subscribe();
+                    let txn = self.sip_txn.as_mut().ok_or("how is txn missing here")?;
+
+                    self.state = loop {
+                        select! {
+                            _ = sleep(Duration::from_secs(5)) => {
+                                let to = self.to_uri.clone().ok_or("missing to uri in dial out")?;
+                                let req = txn.cancel_request(to);
+                                txn.tx_ch.send(rsip::SipMessage::Request(req)).await?;
+                                txn.rx_ch.recv().await;
+                                break State::Connected(Dial::Busy)
+                            },
+                            msg = txn.rx_ch.recv() => match msg.ok_or("closed rx channel in dialout")? {
+                                SipMessage::Request(_) => Err("unexpected request during dial out")?,
+                                SipMessage::Response(resp) => match resp.status_code {
+                                    rsip::StatusCode::Decline => {
+                                        let req = txn.ack_request(resp);
+                                        txn.tx_ch.send(rsip::SipMessage::Request(req)).await?;
+                                        break State::Connected(Dial::Busy)
+                                    },
+                                    rsip::StatusCode::Ringing => {
+                                        break State::Connected(Dial::Dialing)
+                                    },
+                                    _ => {},
+                                },
+                            },
+                            hook_evt = hook_ch.recv() => match hook_evt {
+                                Ok(SwitchHook::ON) => break State::Connected(Dial::OnHook),
+                                Ok(SwitchHook::OFF) => break State::Connected(Dial::Error("got off hook during dial out".into())),
+                                Err(e) => break State::Connected(Dial::Error(Box::new(e))),
+                            },
+                        }
+                    }
                 },
                 State::Connected(Dial::Dialing) => {
                     debug!("dialing");
                     let audio_out_ch = self.audio_out_ch.clone();
                     let mut hook_ch = self.hook_ch.subscribe();
+                    let txn = self.sip_txn.as_mut().ok_or("how is txn missing here")?;
+
                     let tone_handle = TwoToneGen::ring(self.audio_out_sample_rate)
                         .send_to(audio_out_ch, self.audio_out_n_channels);
 
                     self.state = loop {
-                        match hook_ch.recv().await {
-                            Ok(SwitchHook::ON) => break State::Connected(Dial::OnHook),
-                            Ok(SwitchHook::OFF) => {},
-                            Err(e) => break State::Connected(Dial::Error(Box::new(e))),
+                        select! {
+                            msg = txn.rx_ch.recv() => match msg.ok_or("closed rx channel in dialing")? {
+                                SipMessage::Request(_) => Err("unexpected request during dial out")?,
+                                SipMessage::Response(resp) => match resp.status_code {
+                                    rsip::StatusCode::OK => break State::Connected(Dial::Connected),
+                                    _ => {},
+                                },
+                            },
+                            hook_evt = hook_ch.recv() => match hook_evt {
+                                Ok(SwitchHook::ON) => break State::Connected(Dial::OnHook),
+                                Ok(SwitchHook::OFF) => {},
+                                Err(e) => break State::Connected(Dial::Error(Box::new(e))),
+                            },
                         }
                     };
 
                     tone_handle.abort();
                 },
-                State::Connected(Dial::Connected) => todo!(),
+                State::Connected(Dial::Connected) => {
+                    debug!("connected yay");
+                    // TODO(peter): Wire up RTP
+                    let mut hook_ch = self.hook_ch.subscribe();
+
+                    self.state = loop {
+                        select! {
+                            hook_evt = hook_ch.recv() => match hook_evt {
+                                Ok(SwitchHook::ON) => break State::Connected(Dial::OnHook),
+                                Ok(SwitchHook::OFF) => {},
+                                Err(e) => break State::Connected(Dial::Error(Box::new(e))),
+                            },
+                        }
+                    };
+                },
                 State::Connected(Dial::Busy) => {
                     debug!("busy");
                     let audio_out_ch = self.audio_out_ch.clone();
@@ -287,6 +409,7 @@ impl Phone {
                 },
                 State::Connected(Dial::Error(e)) => {
                     error!(e);
+                    self.sip_txn = None;
                     let mut hook_ch = self.hook_ch.subscribe();
 
                     self.state = loop {

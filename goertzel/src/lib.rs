@@ -1,5 +1,6 @@
 pub mod asyncutil;
 pub mod audio;
+pub mod contacts;
 pub mod deco;
 pub mod dtmf;
 pub mod hook;
