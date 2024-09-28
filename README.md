@@ -22,6 +22,13 @@ The Pi is set up with the hostname `peterpi.local` and can be SSH'ed to using th
 ssh recurse@peterpi.local
 ```
 
+### SSH setup
+```
+sudo sed --in-place=.bak --expression='s/^#PermitEmptyPasswords no/PermitEmptyPasswords yes/g' /etc/ssh/sshd_config
+sudo systemctl restart sshd
+sudo passwd -d recurse
+```
+
 ### Dial tone generator
 These commands are used to send sine wave signals to the speakers of the Pi. By correctly routing the
 output audio device of the Pi to "headphones" routed to pins, these signals can be sent to the phone.
@@ -38,13 +45,22 @@ cross build --target=arm-unknown-linux-gnueabihf
 
 ### Device Tree compile
 ```
+scp phoneodeo.dts recurse@peterpi.local:
+scp bootconfig.txt recurse@peterpi.local:
+```
+```
 dtc -@ -H epapr -O dtb -o phoneodeo.dtbo -Wno-unit_address_vs_reg phoneodeo.dts
 sudo cp phoneodeo.dtbo /boot/overlays
+sudo chown root:root bootconfig.txt
+sudo chmod 755 bootconfig.txt
+sudo cp bootconfig.txt /boot/firmware/config.txt
 ```
 
 ### Install phreak.service
 ```
-scp phreak.service recurse@peterpi.local:
+scp goertzel/phreak.service recurse@peterpi.local:
+```
+```
 sudo chown root:root ~/phreak.service
 sudo chmod 777 ~/phreak.service
 sudo mv ~/phreak.service /etc/systemd/system
@@ -53,8 +69,17 @@ sudo systemctl enable phreak.service
 ```
 
 ### Install .asoundrc
+```
 scp asoundrc recurse@peterpi.local:.asoundrc
+```
+```
 sudo cp .asoundrc /root
+```
+
+### Set volume
+```
+amixer sset PCM -M '30%'
+```
 
 ### Take down Wi-Fi
 ```
@@ -80,7 +105,7 @@ make
 make install
 ```
 
-## socat wiring on Windows
+### socat wiring on Windows
 Cygwin:
 ```
 socat UDP4-RECVFROM:5060,fork UDP4:"$(wsl hostname -I | tr -d ' ')":5062 &
@@ -90,6 +115,13 @@ WSL:
 ```
 socat UDP4-RECVFROM:5062,fork UDP4:localhost:5060 &
 socat UDP4-RECVFROM:5063,fork UDP4:localhost:5061 &
+```
+
+### ssh wiring on Windows:
+PowerShell (administrator):
+```
+netsh interface portproxy add v4tov4 listenaddress=x.x.x.x listenport=22 connectaddress=$($(wsl hostname -I).Trim()) connectport=22
+netsh advfirewall firewall add rule name=”Open Port 22 for WSL2” dir=in action=allow protocol=TCP localport=22
 ```
 
 ## Relevant Material
