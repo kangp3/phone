@@ -13,14 +13,13 @@ use md5::{Md5, Digest};
 use rand::distributions::Alphanumeric;
 use rand::{thread_rng, Rng};
 use rsip::headers::auth::{Algorithm, AuthQop};
-use rsip::headers::{auth, CallId, ContentLength, Expires, MaxForwards, UserAgent};
-use rsip::param::OtherParam;
+use rsip::headers::{self, auth, CallId, ContentLength, Expires, MaxForwards, UserAgent};
+use rsip::param::{OtherParam, Tag};
 use rsip::prelude::{HasHeaders, HeadersExt, ToTypedHeader};
 use rsip::typed::{Allow, Authorization, CSeq, Contact, ContentType, From, MediaType, To, Via};
 use rsip::{Auth, Header, Headers, Method, Param, Request, Response, Scheme, SipMessage, StatusCode, Transport, Uri, Version};
 use sdp_rs::{MediaDescription, SessionDescription};
 use tokio::sync::{mpsc, RwLock, RwLockWriteGuard};
-use tracing::debug;
 use vec1::Vec1;
 
 
@@ -111,10 +110,8 @@ pub struct Txn {
 
     cseq: u32,
     call_id: CallId,
-    from_tag: Param,
-    to_tag: Option<Param>,
-
-    invite_cseq: Option<u32>,
+    from_tag: Tag,
+    to_tag: Option<Tag>,
 }
 
 // TODO(peter): Ask about &mut impl Rng vs &mut ThreadRng (this didn't work)
@@ -135,7 +132,7 @@ impl Txn {
         let (rx_send_ch, rx_ch) = mpsc::channel(MESSAGE_CHANNEL_SIZE);
         let mut rng = thread_rng();
         let call_id = CallId::from(format!("{}/{}", ms_since_epoch(), rand_chars(&mut rng, 16)));
-        let from_tag = Param::Tag(rand_chars(&mut rng, 16).into());
+        let from_tag = rand_chars(&mut rng, 16).into();
         let to_tag = None;
 
         mailboxes.insert(call_id.to_string(), rx_send_ch);
@@ -148,8 +145,6 @@ impl Txn {
             call_id,
             from_tag,
             to_tag,
-
-            invite_cseq: None,
         }
     }
 
@@ -158,8 +153,8 @@ impl Txn {
 
         let cseq = req.cseq_header()?.seq()?;
         let call_id = req.call_id_header()?.clone();
-        let from_tag = Param::Tag(req.from_header()?.tag()?.ok_or("missing from tag")?);
-        let to_tag = req.to_header()?.tag()?.map(|t| Param::Tag(t));
+        let from_tag = req.from_header()?.tag()?.ok_or("missing from tag")?;
+        let to_tag = req.to_header()?.tag()?;
 
         match mailboxes.entry(call_id.to_string()) {
             Entry::Occupied(_) => Err("mailbox already exists in map")?,
@@ -174,8 +169,6 @@ impl Txn {
             call_id,
             from_tag,
             to_tag,
-
-            invite_cseq: Some(cseq),  // TODO(peter): Only do this for INVITEs
         })
     }
 
@@ -187,8 +180,24 @@ impl Txn {
                 h@Header::CallId(_) |
                 h@Header::CSeq(_) |
                 h@Header::From(_) |
-                h@Header::To(_) |
                 h@Header::Via(_) => headers.push(h),
+                ref h@Header::To(ref to) => {
+                    match to.tag()? {
+                        Some(_) => headers.push(h.clone()),
+                        None => {
+                            let tag = match &self.to_tag {
+                                Some(tag) => tag.clone(),
+                                None => {
+                                    let mut rng = thread_rng();
+                                    let tag: Tag = rand_chars(&mut rng, 16).into();
+                                    self.to_tag = Some(tag.clone());
+                                    tag
+                                },
+                            };
+                            headers.push(Header::To(to.clone().with_tag(tag)?));
+                        },
+                    }
+                },
                 _ => {},
             }
         }
@@ -207,7 +216,13 @@ impl Txn {
         }.into());
         headers.push(ContentLength::from(body.len() as u32).into());
 
-        let host_with_port = req.contact_headers().first().ok_or("missing contact header")?.uri()?.host_with_port;
+        let host_with_port = {
+            let uri = match req.contact_headers().first() {
+                Some(contact) => contact.uri()?,
+                None => req.via_header()?.uri()?,
+            };
+            uri.host_with_port
+        };
         let addr = SocketAddr::new(host_with_port.host.try_into()?, *host_with_port.port.unwrap_or(rsip::Port::new(5060_u16)).value());
         Ok((
             addr,
@@ -280,12 +295,12 @@ impl Txn {
         req.headers.push(From{
             display_name: None,
             uri: from,
-            params: vec![self.from_tag.clone()],
+            params: vec![self.from_tag.clone().into()],
         }.into());
         req.headers.push(To{
             display_name: None,
             uri: to,
-            params: vec![self.to_tag.clone()].into_iter().filter_map(|t| t).collect(),
+            params: vec![self.to_tag.clone()].into_iter().filter_map(|t| t.map(|t| Param::Tag(t))).collect(),
         }.into());
 
         req
@@ -399,20 +414,15 @@ impl Txn {
         );
         req.uri = to;
         req.headers.push(ContentType(MediaType::Sdp(vec![])).into());
-        self.invite_cseq = Some(req.cseq_header().unwrap().seq().unwrap());
         req
     }
 
     pub fn ack_request(&mut self, resp: Response) -> Request {
         let mut req = self.new_request(Method::Ack, vec![]);
-        if resp.status_code == StatusCode::OK {
-            if let Some(cseq) = self.invite_cseq {
-                req.cseq_header_mut().unwrap().mut_seq(cseq).unwrap();
-                req.body = resp.body.clone(); // Copy over SDP
-            }
-        }
-        for header in resp.headers {
+        for header in resp.headers.clone() {
             match header {
+                h@Header::ContentType(_) |
+                h@Header::ContentLength(_) |
                 h@Header::From(_) |
                 h@Header::To(_) => {
                     req.headers.push(h);
@@ -420,11 +430,24 @@ impl Txn {
                 _ => {},
             }
         }
+        if resp.body.len() > 0 {
+            req.body = resp.body.clone(); // Copy over SDP
+        }
+        let cseq = resp.cseq_header().unwrap().seq().unwrap();
+        req.cseq_header_mut().unwrap().mut_seq(cseq).unwrap();
         req
     }
 
     pub fn cancel_request(&mut self, to: Uri) -> Request {
         let req = self.new_request_from_to(Method::Cancel, (*MY_URI).clone(), to, vec![]);
+        req
+    }
+
+    pub fn bye_request(&mut self, peer: Uri, from: headers::From, to: headers::To) -> Request {
+        let mut req = self.new_request(Method::Bye, vec![]);
+        req.uri = peer;
+        req.headers.push(from.into());
+        req.headers.push(to.into());
         req
     }
 }

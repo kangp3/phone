@@ -87,6 +87,8 @@ pub async fn bind() -> Result<(mpsc::Sender<(SocketAddr, SipMessage)>, mpsc::Rec
                             };
                         }
                         if let Some(txn) = txn {
+                            // TODO(peter): Handle sending back busy tones if the channel is not
+                            // listening
                             inbound_trx_send_ch.send(txn).await?;
                         }
                     }
