@@ -99,22 +99,18 @@ cargo build --release --target=arm-unknown-linux-gnueabihf
 ```
 wget https://downloads.asterisk.org/pub/telephony/asterisk/asterisk-20-current.tar.gz
 tar -xzvf asterisk-20-current.tar.gz
-./contrib/scripts/install_prereq install
-./configure
-make
+cd asterisk-20.9.3
+./contrib/scripts/install_prereq install &&
+./configure &&
+make &&
 make install
 ```
 
 ### socat wiring on Windows
 Cygwin:
 ```
-socat UDP4-RECVFROM:5060,fork UDP4:"$(wsl hostname -I | tr -d ' ')":5062 &
-socat UDP4-RECVFROM:5061,fork UDP4:"$(wsl hostname -I | tr -d ' ')":5063 &
-```
-WSL:
-```
-socat UDP4-RECVFROM:5062,fork UDP4:localhost:5060 &
-socat UDP4-RECVFROM:5063,fork UDP4:localhost:5061 &
+socat -t30 -T30 UDP4-RECVFROM:5060,fork UDP4:"$(wsl hostname -I | tr -d ' ')":5062 &
+socat -t30 -T30 UDP4-RECVFROM:5061,fork UDP4:"$(wsl hostname -I | tr -d ' ')":5063 &
 ```
 
 ### ssh wiring on Windows:

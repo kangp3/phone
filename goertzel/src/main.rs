@@ -1,13 +1,16 @@
 use std::error::Error;
+use std::time::Duration;
 use std::{panic, process};
 
 #[cfg(feature = "wav")]
 use goertzel::asyncutil::and_log_err;
 use goertzel::phone::Phone;
+use goertzel::ring;
 #[cfg(feature = "wav")]
 use hound;
 #[cfg(feature = "wav")]
 use pico_args::Arguments;
+use tokio::time::sleep;
 use tracing::{error, info};
 use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 
@@ -57,6 +60,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
         });
         info!("Started up WAV writer");
     }
+
+    let ring_handle = ring::ring_phone()?;
+    sleep(Duration::from_secs(1)).await;
+    ring_handle.abort();
 
     if let Err(e) = phone.begin_life().await {
         error!(e);

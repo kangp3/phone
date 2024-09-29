@@ -1,5 +1,6 @@
 use core::str;
 use std::error::Error;
+use std::net::SocketAddr;
 
 use rsip::{Method, SipMessage};
 use tokio::net::UdpSocket;
@@ -8,7 +9,7 @@ use tokio::sync::mpsc;
 use tracing::debug;
 
 use crate::asyncutil::and_log_err;
-use crate::sip::{Txn, SERVER_ADDR};
+use crate::sip::Txn;
 
 use super::TXN_MAILBOXES;
 
@@ -16,7 +17,7 @@ use super::TXN_MAILBOXES;
 const BUF_SIZE: usize = 4096;
 const MESSAGE_CHANNEL_SIZE: usize = 64;
 
-pub async fn bind() -> Result<(mpsc::Sender<SipMessage>, mpsc::Receiver<Txn>), Box<dyn Error>> {
+pub async fn bind() -> Result<(mpsc::Sender<(SocketAddr, SipMessage)>, mpsc::Receiver<Txn>), Box<dyn Error>> {
     let socket = UdpSocket::bind("0.0.0.0:5060").await?;
 
     let (inbound_trx_send_ch, inbound_trx_recv_ch) = mpsc::channel(MESSAGE_CHANNEL_SIZE);
@@ -91,10 +92,10 @@ pub async fn bind() -> Result<(mpsc::Sender<SipMessage>, mpsc::Receiver<Txn>), B
                     }
                 },
                 send = outbound_recv.recv() => {
-                    let msg = send.ok_or("socket send channel closed")?;
+                    let (addr, msg) = send.ok_or("socket send channel closed")?;
                     debug!("SENT MESSAGE: {}", msg);
                     let msg_bytes: Vec<u8> = msg.into();
-                    let len = socket.send_to(&msg_bytes, *SERVER_ADDR).await?;
+                    let len = socket.send_to(&msg_bytes, addr).await?;
                     (len == msg_bytes.len()).then_some(()).ok_or("byte len does not match")?;
                 },
             }

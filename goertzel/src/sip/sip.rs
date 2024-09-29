@@ -1,7 +1,9 @@
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
+use std::env;
 use std::error::Error;
-use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::net::SocketAddr;
+use std::str::FromStr;
 use std::sync::{Arc, LazyLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -13,18 +15,17 @@ use rand::{thread_rng, Rng};
 use rsip::headers::auth::{Algorithm, AuthQop};
 use rsip::headers::{auth, CallId, ContentLength, Expires, MaxForwards, UserAgent};
 use rsip::param::OtherParam;
-use rsip::prelude::ToTypedHeader;
+use rsip::prelude::{HasHeaders, HeadersExt, ToTypedHeader};
 use rsip::typed::{Allow, Authorization, CSeq, Contact, ContentType, From, MediaType, To, Via};
 use rsip::{Auth, Header, Headers, Method, Param, Request, Response, Scheme, SipMessage, StatusCode, Transport, Uri, Version};
 use sdp_rs::{MediaDescription, SessionDescription};
 use tokio::sync::{mpsc, RwLock, RwLockWriteGuard};
+use tracing::debug;
 use vec1::Vec1;
 
 
 const MESSAGE_CHANNEL_SIZE: usize = 64;
 
-const USERNAME: &str = "1100";
-const PASSWORD: &str = "SW2fur7facrarac";
 const REALM: &str = "asterisk";
 const USER_AGENT: &str = "Frandline";
 const UA_VERSION: &str = "0.1.0";
@@ -33,9 +34,10 @@ const UA_VERSION: &str = "0.1.0";
 const BRANCH_PREFIX: &str = "z9hG4bK";
 const MAX_FORWARDS: u32 = 70;
 
-// TODO(peter): Make these configurable
+const USERNAME: LazyLock<String> = LazyLock::new(|| env::var("SIP_USERNAME").unwrap());
+const PASSWORD: LazyLock<String> = LazyLock::new(|| env::var("SIP_PASSWORD").unwrap());
 pub static SERVER_ADDR: LazyLock<SocketAddr> = LazyLock::new(
-    || SocketAddr::new(IpAddr::V4(Ipv4Addr::new(192, 168, 12, 182)), 5060)
+    || SocketAddr::from_str(&env::var("SIP_SERVER_ADDRESS").unwrap()).unwrap()
 );
 pub static CLIENT_ADDR: LazyLock<SocketAddr> = LazyLock::new(
     || SocketAddr::new(local_ip().unwrap(), 5060)
@@ -44,7 +46,7 @@ pub static MY_URI: LazyLock<Uri> = LazyLock::new(
     || Uri{
         scheme: Some(Scheme::Sip),
         auth: Some(Auth{
-            user: USERNAME.into(),
+            user: (*USERNAME).clone(),
             password: None,
         }),
         host_with_port: (*SERVER_ADDR).into(),
@@ -62,7 +64,7 @@ fn md5(s: String) -> String {
     format!("{:x}", hasher.finalize())
 }
 
-pub async fn register(out_ch: mpsc::Sender<SipMessage>) -> Result<(), Box<dyn Error>> {
+pub async fn register(out_ch: mpsc::Sender<(SocketAddr, SipMessage)>) -> Result<(), Box<dyn Error>> {
     let txn_mailboxes = TXN_MAILBOXES.clone();
 
     let mut txn = {
@@ -70,7 +72,7 @@ pub async fn register(out_ch: mpsc::Sender<SipMessage>) -> Result<(), Box<dyn Er
         Txn::new(out_ch, mailboxes)
     };
     let msg = SipMessage::Request(txn.register_request());
-    txn.tx_ch.send(msg).await?;
+    txn.tx_ch.send(((*SERVER_ADDR).clone(), msg)).await?;
     let msg = txn.rx_ch.recv().await.ok_or("closed rx channel")?;
     if let SipMessage::Response(r) = msg {
         let mut opaque = None;
@@ -91,7 +93,7 @@ pub async fn register(out_ch: mpsc::Sender<SipMessage>) -> Result<(), Box<dyn Er
             txn.add_auth_to_request(&mut req, opaque, nonce);
             req
         });
-        txn.tx_ch.send(msg).await?;
+        txn.tx_ch.send(((*SERVER_ADDR).clone(), msg)).await?;
         let msg = txn.rx_ch.recv().await.ok_or("closed rx channel")?;
         match msg {
             SipMessage::Request(_) => Err("expected 200 response to authed register, got request")?,
@@ -104,13 +106,15 @@ pub async fn register(out_ch: mpsc::Sender<SipMessage>) -> Result<(), Box<dyn Er
 
 // TODO(peter): Implement Drop on this to make sure mailboxes get cleared out
 pub struct Txn {
-    pub tx_ch: mpsc::Sender<SipMessage>,
+    pub tx_ch: mpsc::Sender<(SocketAddr, SipMessage)>,
     pub rx_ch: mpsc::Receiver<SipMessage>,
 
     cseq: u32,
     call_id: CallId,
     from_tag: Param,
     to_tag: Option<Param>,
+
+    invite_cseq: Option<u32>,
 }
 
 // TODO(peter): Ask about &mut impl Rng vs &mut ThreadRng (this didn't work)
@@ -127,7 +131,7 @@ fn micros_since_epoch() -> u128 {
 }
 
 impl Txn {
-    pub fn new(tx_ch: mpsc::Sender<SipMessage>, mut mailboxes: RwLockWriteGuard<'_, HashMap<String, mpsc::Sender<SipMessage>>>) -> Self {
+    pub fn new(tx_ch: mpsc::Sender<(SocketAddr, SipMessage)>, mut mailboxes: RwLockWriteGuard<'_, HashMap<String, mpsc::Sender<SipMessage>>>) -> Self {
         let (rx_send_ch, rx_ch) = mpsc::channel(MESSAGE_CHANNEL_SIZE);
         let mut rng = thread_rng();
         let call_id = CallId::from(format!("{}/{}", ms_since_epoch(), rand_chars(&mut rng, 16)));
@@ -144,55 +148,18 @@ impl Txn {
             call_id,
             from_tag,
             to_tag,
+
+            invite_cseq: None,
         }
     }
 
-    pub fn from_req(req: Request, tx_ch: mpsc::Sender<SipMessage>, mut mailboxes: RwLockWriteGuard<'_, HashMap<String, mpsc::Sender<SipMessage>>>) -> Result<Self, Box<dyn Error>> {
+    pub fn from_req(req: Request, tx_ch: mpsc::Sender<(SocketAddr, SipMessage)>, mut mailboxes: RwLockWriteGuard<'_, HashMap<String, mpsc::Sender<SipMessage>>>) -> Result<Self, Box<dyn Error>> {
         let (rx_send_ch, rx_ch) = mpsc::channel(MESSAGE_CHANNEL_SIZE);
 
-        let mut cseq: Option<u32> = None;
-        let mut call_id: Option<CallId> = None;
-        let mut from_tag: Option<Param> = None;
-        let mut to_tag: Option<Param> = None;
-
-        for header in req.headers {
-            match header {
-                Header::CallId(h) => {
-                    call_id = Some(h.into());
-                }
-                Header::CSeq(h) => {
-                    let h = h.typed()?;
-                    cseq = Some(h.seq);
-                }
-                Header::From(h) => {
-                    let h = h.typed()?;
-                    for param in h.params {
-                        match param {
-                            Param::Tag(t) => {
-                                from_tag = Some(t.into());
-                            }
-                            _ => {}
-                        }
-                    }
-                }
-                Header::To(h) => {
-                    let h = h.typed()?;
-                    for param in h.params {
-                        match param {
-                            Param::Tag(t) => {
-                                to_tag = Some(t.into());
-                            }
-                            _ => {}
-                        }
-                    }
-                }
-                _ => {},
-            }
-        }
-
-        let cseq = cseq.ok_or("missing cseq")?;
-        let call_id = call_id.ok_or("missing call_id")?;
-        let from_tag = from_tag.ok_or("missing from tag")?;
+        let cseq = req.cseq_header()?.seq()?;
+        let call_id = req.call_id_header()?.clone();
+        let from_tag = Param::Tag(req.from_header()?.tag()?.ok_or("missing from tag")?);
+        let to_tag = req.to_header()?.tag()?.map(|t| Param::Tag(t));
 
         match mailboxes.entry(call_id.to_string()) {
             Entry::Occupied(_) => Err("mailbox already exists in map")?,
@@ -207,12 +174,15 @@ impl Txn {
             call_id,
             from_tag,
             to_tag,
+
+            invite_cseq: Some(cseq),  // TODO(peter): Only do this for INVITEs
         })
     }
 
-    pub fn response_to(&self, req: Request, status_code: StatusCode, body: Vec<u8>) -> Response {
+    pub fn response_to(&mut self, req: Request, status_code: StatusCode, body: Vec<u8>) -> Result<(SocketAddr, SipMessage), Box<dyn Error>> {
         let mut headers: Headers = Default::default();
-        for header in req.headers {
+        self.cseq = req.cseq_header()?.seq()?;
+        for header in req.headers().clone() {
             match header {
                 h@Header::CallId(_) |
                 h@Header::CSeq(_) |
@@ -222,14 +192,38 @@ impl Txn {
                 _ => {},
             }
         }
+        headers.push(Contact{
+            display_name: Some((*USERNAME).clone()),
+            uri: Uri {
+                scheme: Some(Scheme::Sip),
+                host_with_port: (*CLIENT_ADDR).into(),
+                auth: Some(Auth{
+                    user: (*USERNAME).clone(),
+                    password: None,
+                }),
+                ..Default::default()
+            },
+            params: vec![Param::Q("1".into())],
+        }.into());
         headers.push(ContentLength::from(body.len() as u32).into());
 
-        Response{
-            status_code,
-            version: Version::V2,
-            headers,
-            body,
-        }
+        let host_with_port = req.contact_headers().first().ok_or("missing contact header")?.uri()?.host_with_port;
+        let addr = SocketAddr::new(host_with_port.host.try_into()?, *host_with_port.port.unwrap_or(rsip::Port::new(5060_u16)).value());
+        Ok((
+            addr,
+            SipMessage::Response(Response{
+                status_code,
+                version: Version::V2,
+                headers,
+                body,
+            }),
+        ))
+    }
+
+    pub fn sdp_response_to(&mut self, req: Request, status_code: StatusCode, sdp: Vec<u8>) -> Result<(SocketAddr, SipMessage), Box<dyn Error>> {
+        let (addr, mut resp) = self.response_to(req, status_code, sdp)?;
+        resp.headers_mut().push(ContentType(MediaType::Sdp(vec![])).into());
+        Ok((addr, resp))
     }
 
     fn new_request(&mut self, method: Method, body: Vec<u8>) -> Request {
@@ -247,18 +241,18 @@ impl Txn {
             },
             params: vec![
                 Param::Branch(branch.into()),
-                Param::Other(OtherParam::from("rport"), None)
+                Param::Other(OtherParam::from("rport"), None),
             ],
         }.into());
         headers.push(UserAgent::from(format!("{}/{}", USER_AGENT, UA_VERSION)).into());
         headers.push(self.call_id.clone().into());
         headers.push(Contact{
-            display_name: Some(USERNAME.into()),
+            display_name: Some((*USERNAME).clone()),
             uri: Uri {
                 scheme: Some(Scheme::Sip),
                 host_with_port: (*CLIENT_ADDR).into(),
                 auth: Some(Auth{
-                    user: USERNAME.into(),
+                    user: (*USERNAME).clone(),
                     password: None,
                 }),
                 ..Default::default()
@@ -302,13 +296,13 @@ impl Txn {
         // TOOD(peter): Actually track this?
         let nc = 1;
 
-        let ha1 = md5(format!("{}:{}:{}", USERNAME, REALM, PASSWORD));
+        let ha1 = md5(format!("{}:{}:{}", *USERNAME, REALM, *PASSWORD));
         let ha2 = md5(format!("{}:{}:{}", req.method, req.uri.scheme.as_ref().unwrap_or(&Scheme::Sip), (*SERVER_ADDR)));
         let response = md5(format!("{}:{}:{:08x}:{}:auth:{}", ha1, nonce, nc, cnonce, ha2));
 
         req.headers.push(Authorization{
             scheme: auth::Scheme::Digest,
-            username: USERNAME.into(),
+            username: (*USERNAME).clone(),
             realm: REALM.into(),
             nonce,
             uri: Uri {
@@ -324,15 +318,8 @@ impl Txn {
         req.headers.push(Expires::from(3600).into());
     }
 
-    pub fn register_request(&mut self) -> Request {
-        let mut req = self.new_request_from_to(Method::Register, (*MY_URI).clone(), (*MY_URI).clone(), vec![]);
-        req.headers.push(Allow::from(Method::all()).into());
-        req
-    }
-
-    pub fn invite_request(&mut self, to: Uri) -> Request {
-        let sess_id = micros_since_epoch().to_string();
-        let body = SessionDescription{
+    pub fn sdp(&self, sess_id: String) -> Vec<u8> {
+        SessionDescription{
             version: sdp_rs::lines::Version::V0,
             origin: sdp_rs::lines::Origin{
                 username: "-".to_string(),
@@ -363,10 +350,10 @@ impl Txn {
             media_descriptions: vec![MediaDescription{
                 media: sdp_rs::lines::Media{
                     media: sdp_rs::lines::media::MediaType::Audio,
-                    port: 19512,
+                    port: 19512,  // TODO(peter): Choose and set up an RTP port
                     num_of_ports: None,
                     proto: sdp_rs::lines::media::ProtoType::RtpAvp,
-                    fmt: vec![0, 101].into_iter().map(|v| v.to_string()).join(" "),
+                    fmt: vec![0].into_iter().map(|v| v.to_string()).join(" "),
                 },
                 info: None,
                 connections: vec![],
@@ -379,32 +366,51 @@ impl Txn {
                         clock_rate: 8000,
                         encoding_params: None,
                     }),
-                    sdp_rs::lines::Attribute::Rtpmap(sdp_rs::lines::attribute::Rtpmap {
-                        payload_type: 101,
-                        encoding_name: "telephone-event".into(),
-                        clock_rate: 8000,
-                        encoding_params: None,
-                    }),
-                    sdp_rs::lines::Attribute::Other("fmtp".into(), Some("101 0-16".into())),
                     sdp_rs::lines::Attribute::Ptime(20.0),
                     sdp_rs::lines::Attribute::Maxptime(140.0),
                     sdp_rs::lines::Attribute::Sendrecv,
                 ],
             }],
-        };
+        }.to_string().into_bytes()
+    }
+
+    pub fn sdp_from(&self, req: Request) -> Result<Vec<u8>, Box<dyn Error>> {
+        let sdp = SessionDescription::from_str(std::str::from_utf8(&req.body)?)?;
+        let sess_id = sdp.origin.sess_id;
+        Ok(self.sdp(sess_id))
+    }
+
+    pub fn register_request(&mut self) -> Request {
+        let mut from_uri = (*MY_URI).clone();
+        from_uri.host_with_port = (*CLIENT_ADDR).into();
+        let mut req = self.new_request_from_to(Method::Register, from_uri, (*MY_URI).clone(), vec![]);
+        req.headers.push(Allow::from(Method::all()).into());
+        req
+    }
+
+    pub fn invite_request(&mut self, to: Uri) -> Request {
+        let sess_id = micros_since_epoch().to_string();
+        let body = self.sdp(sess_id);
         let mut req = self.new_request_from_to(
             Method::Invite,
             (*MY_URI).clone(),
             to.clone(),
-            body.to_string().into_bytes(),
+            body,
         );
         req.uri = to;
         req.headers.push(ContentType(MediaType::Sdp(vec![])).into());
+        self.invite_cseq = Some(req.cseq_header().unwrap().seq().unwrap());
         req
     }
 
     pub fn ack_request(&mut self, resp: Response) -> Request {
         let mut req = self.new_request(Method::Ack, vec![]);
+        if resp.status_code == StatusCode::OK {
+            if let Some(cseq) = self.invite_cseq {
+                req.cseq_header_mut().unwrap().mut_seq(cseq).unwrap();
+                req.body = resp.body.clone(); // Copy over SDP
+            }
+        }
         for header in resp.headers {
             match header {
                 h@Header::From(_) |
