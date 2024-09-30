@@ -4,6 +4,7 @@ use std::time::Duration;
 
 use rsip::prelude::{HeadersExt, ToTypedHeader};
 use rsip::SipMessage;
+use sdp_rs::lines::media::MediaType;
 use tokio::process::Command;
 use tokio::select;
 use tokio::sync::{broadcast, mpsc};
@@ -12,7 +13,7 @@ use tracing::{debug, error, info};
 
 use crate::contacts::CONTACTS;
 use crate::sip::{Txn, SERVER_ADDR, TXN_MAILBOXES};
-use crate::{audio, deco, ring, sip};
+use crate::{audio, deco, ring, rtp, sip};
 use crate::hook::{self, SwitchHook};
 use crate::nettest::do_i_have_internet;
 use crate::tone::TwoToneGen;
@@ -36,7 +37,7 @@ pub enum Dial {
     Await,
     DialOut(u32, rsip::headers::From),
     Dialing(u32, rsip::headers::From, rsip::headers::To),
-    Connected(u32, rsip::Uri, rsip::headers::From, rsip::headers::To),
+    Connected(u32, rsip::Uri, rsip::headers::From, rsip::headers::To, rtp::socket::Socket),
     Busy,
     Error(Box<dyn Error>),
 }
@@ -249,7 +250,7 @@ impl Phone {
                                     txn.tx_ch.send((addr, resp.clone())).await?;
                                     match txn.rx_ch.recv().await.ok_or("closed rx channel in ringing")? {
                                         SipMessage::Request(req) => match req.method() {
-                                            rsip::Method::Ack => break State::Connected(Dial::Connected(cseq, peer.clone(), local.into(), remote.into())),
+                                            rsip::Method::Ack => break State::Connected(Dial::Connected(cseq, peer.clone(), local.into(), remote.into(), rtp::socket::Socket::bind().await?)),
                                             _ => Err(format!("got non-ack request during ringing: {}", req))?,
                                         }
                                         _ => Err("got unexpected response during ringing")?,
@@ -395,7 +396,8 @@ impl Phone {
                                         let req = txn.ack_request(resp.clone());
                                         txn.tx_ch.send(((*SERVER_ADDR).clone(), rsip::SipMessage::Request(req))).await?;
                                         let peer = resp.contact_header()?.uri()?;
-                                        break State::Connected(Dial::Connected(*cseq, peer, local.clone(), remote.clone()));
+                                        let rtp_sock = rtp::socket::Socket::bind().await?;
+                                        break State::Connected(Dial::Connected(*cseq, peer, local.clone(), remote.clone(), rtp_sock));
                                     },
                                     _ => {},
                                 },
@@ -410,9 +412,10 @@ impl Phone {
 
                     tone_handle.abort();
                 },
-                State::Connected(Dial::Connected(cseq, peer, local, remote)) => {
+                State::Connected(Dial::Connected(cseq, peer, local, remote, rtp_sock)) => {
                     debug!("connected yay");
                     // TODO(peter): Wire up RTP
+                    let mut rtp_sock = rtp_sock.clone();
                     let mut hook_ch = self.hook_ch.subscribe();
                     let txn = self.sip_txn.as_mut().ok_or("how is txn missing here")?;
 
@@ -422,12 +425,28 @@ impl Phone {
                                 SipMessage::Request(req) => match req.method {
                                     rsip::Method::Invite => {
                                         let sdp = txn.sdp_from(req.clone())?;
+                                        let sdp_ip = {
+                                            let connection = sdp.connection.clone().ok_or("connection line doesn't exist")?;
+                                            connection.connection_address.base
+                                        };
+                                        let mut sdp_port = None;
+                                        for desc in &sdp.media_descriptions {
+                                            if desc.media.media == MediaType::Audio {
+                                                sdp_port = Some(desc.media.port);
+                                            }
+                                        }
+                                        let sdp_port = sdp_port.ok_or("missing audio SDP port")?;
+                                        let sdp_addr = SocketAddr::new(sdp_ip, sdp_port);
+
+                                        let audio_in_ch = self.audio_in_ch.subscribe();
+                                        let audio_out_ch = self.audio_out_ch.clone();
+                                        rtp_sock.connect(sdp_addr, audio_in_ch, audio_out_ch, self.audio_out_n_channels).await?;
                                         let (addr, resp) = txn.sdp_response_to(req, rsip::StatusCode::OK, sdp)?;
                                         txn.tx_ch.send((addr, resp)).await?;
 
                                         match txn.rx_ch.recv().await.ok_or("closed rx channel in connected")? {
                                             SipMessage::Request(req) => match req.method() {
-                                                rsip::Method::Ack => break State::Connected(Dial::Connected(*cseq, peer.clone(), local.clone(), remote.clone())),
+                                                rsip::Method::Ack => continue,
                                                 _ => Err(format!("got non-ack request during connected: {}", req))?,
                                             }
                                             _ => Err("got unexpected response during connected")?,

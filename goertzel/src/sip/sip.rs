@@ -235,8 +235,8 @@ impl Txn {
         ))
     }
 
-    pub fn sdp_response_to(&mut self, req: Request, status_code: StatusCode, sdp: Vec<u8>) -> Result<(SocketAddr, SipMessage), Box<dyn Error>> {
-        let (addr, mut resp) = self.response_to(req, status_code, sdp)?;
+    pub fn sdp_response_to(&mut self, req: Request, status_code: StatusCode, sdp: SessionDescription) -> Result<(SocketAddr, SipMessage), Box<dyn Error>> {
+        let (addr, mut resp) = self.response_to(req, status_code, sdp.to_string().into_bytes())?;
         resp.headers_mut().push(ContentType(MediaType::Sdp(vec![])).into());
         Ok((addr, resp))
     }
@@ -333,7 +333,7 @@ impl Txn {
         req.headers.push(Expires::from(3600).into());
     }
 
-    pub fn sdp(&self, sess_id: String) -> Vec<u8> {
+    pub fn sdp(&self, sess_id: String) -> SessionDescription {
         SessionDescription{
             version: sdp_rs::lines::Version::V0,
             origin: sdp_rs::lines::Origin{
@@ -386,10 +386,10 @@ impl Txn {
                     sdp_rs::lines::Attribute::Sendrecv,
                 ],
             }],
-        }.to_string().into_bytes()
+        }
     }
 
-    pub fn sdp_from(&self, req: Request) -> Result<Vec<u8>, Box<dyn Error>> {
+    pub fn sdp_from(&self, req: Request) -> Result<SessionDescription, Box<dyn Error>> {
         let sdp = SessionDescription::from_str(std::str::from_utf8(&req.body)?)?;
         let sess_id = sdp.origin.sess_id;
         Ok(self.sdp(sess_id))
@@ -405,12 +405,12 @@ impl Txn {
 
     pub fn invite_request(&mut self, to: Uri) -> Request {
         let sess_id = micros_since_epoch().to_string();
-        let body = self.sdp(sess_id);
+        let body = self.sdp(sess_id).to_string();
         let mut req = self.new_request_from_to(
             Method::Invite,
             (*MY_URI).clone(),
             to.clone(),
-            body,
+            body.into(),
         );
         req.uri = to;
         req.headers.push(ContentType(MediaType::Sdp(vec![])).into());
