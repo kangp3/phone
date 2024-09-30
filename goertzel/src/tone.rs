@@ -4,6 +4,7 @@ use std::time::Duration;
 use cpal::Sample;
 use tokio::sync::mpsc;
 use tokio::task::AbortHandle;
+use tracing::debug;
 
 
 const GAIN: f32 = 0.5;
@@ -15,12 +16,12 @@ const RING_TONES: (u16, u16) = (440, 480);
 
 pub struct TwoToneGen {
     samples: Vec<f32>,
-    sample_idx: usize,
     sample_rate: u32,
 
     on_count: usize,
     off_count: usize,
-    sent_count: usize,
+
+    handle: Option<AbortHandle>,
 }
 
 impl TwoToneGen {
@@ -37,12 +38,12 @@ impl TwoToneGen {
         }
         Self {
             samples,
-            sample_idx: 0,
             sample_rate: rate,
 
             on_count: bufsize as usize,
             off_count: 0,
-            sent_count: 0,
+
+            handle: None,
         }
     }
 
@@ -71,37 +72,47 @@ impl TwoToneGen {
         self
     }
 
-    pub fn send_to(mut self, ch: mpsc::Sender<f32>, n_channels: u16) -> AbortHandle {
-        tokio::spawn(async move {
-            while let Some(s) = self.next() {
+    pub fn play(&mut self, ch: mpsc::Sender<f32>, n_channels: u16) {
+        let on_count = self.on_count;
+        let off_count = self.off_count;
+
+        let samples = self.samples.clone();
+        let handle = tokio::spawn(async move {
+            let mut sample_idx = 0;
+            let mut sent_count = 0;
+            loop {
+                let sample = if off_count > 0 {
+                    sent_count += 1;
+                    if sent_count <= on_count {
+                        let s = samples[sample_idx];
+                        sample_idx = (sample_idx + 1) % samples.len();
+                        s
+                    } else {
+                        if sent_count == on_count + off_count {
+                            sent_count = 0;
+                        }
+                        Sample::EQUILIBRIUM
+                    }
+                } else {
+                    let s = samples[sample_idx];
+                    sample_idx = (sample_idx + 1) % samples.len();
+                    s
+                };
                 for _ in 0..n_channels {
-                    let _ = ch.send(s).await;
+                    let _ = ch.send(sample).await;
                 }
             }
-        }).abort_handle()
+        });
+        self.handle = Some(handle.abort_handle());
     }
 }
 
-impl Iterator for TwoToneGen {
-    type Item=f32;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.off_count > 0 {
-            self.sent_count += 1;
-            if self.sent_count <= self.on_count {
-                let s = self.samples[self.sample_idx];
-                self.sample_idx = (self.sample_idx + 1) % self.samples.len();
-                Some(s)
-            } else {
-                if self.sent_count == self.on_count + self.off_count {
-                    self.sent_count = 0;
-                }
-                Some(Sample::EQUILIBRIUM)
-            }
-        } else {
-            let s = self.samples[self.sample_idx];
-            self.sample_idx = (self.sample_idx + 1) % self.samples.len();
-            Some(s)
+impl Drop for TwoToneGen {
+    fn drop(&mut self) {
+        debug!("dropping tone");
+        match &self.handle {
+            Some(handle) => handle.abort(),
+            None => {},
         }
     }
 }

@@ -3,13 +3,17 @@ use std::time::Duration;
 
 use tokio::task::AbortHandle;
 use tokio::time::sleep;
-use tracing::info;
+use tracing::{debug, info};
 
 use crate::asyncutil::and_log_err;
 
 
-pub fn ring_phone() -> Result<AbortHandle, Box<dyn Error>> {
-    Ok(tokio::spawn(and_log_err("ringing", async move {
+pub struct RingHandle {
+    handle: AbortHandle,
+}
+
+pub fn ring_phone() -> Result<RingHandle, Box<dyn Error>> {
+    let handle = tokio::spawn(and_log_err("ringing", async move {
         loop {
             info!("Ring ring\x07");
             sleep(Duration::from_secs(1)).await;
@@ -17,5 +21,13 @@ pub fn ring_phone() -> Result<AbortHandle, Box<dyn Error>> {
             info!("No ring ring");
             sleep(Duration::from_secs(1)).await;
         }
-    })).abort_handle())
+    })).abort_handle();
+    Ok(RingHandle{ handle })
+}
+
+impl Drop for RingHandle {
+    fn drop(&mut self) {
+        debug!("dropping ring");
+        self.handle.abort();
+    }
 }

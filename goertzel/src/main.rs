@@ -33,7 +33,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         process::exit(1);
     }));
 
-    let mut phone = Phone::new().await?;
+    let phone = Phone::new().await?;
     info!("Got mic, listening...");
 
     // TODO(peter): Re-think the WAV file writing. Doesn't work if we're hijacking SIGINT
@@ -61,9 +61,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
         info!("Started up WAV writer");
     }
 
-    let ring_handle = ring::ring_phone()?;
-    sleep(Duration::from_secs(1)).await;
-    ring_handle.abort();
+    {
+        let _ring = ring::ring_phone()?;
+        sleep(Duration::from_secs(1)).await;
+    }
 
     if let Err(e) = phone.begin_life().await {
         error!(e);

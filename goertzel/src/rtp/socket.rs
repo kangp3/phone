@@ -4,11 +4,10 @@ use std::sync::{Arc, LazyLock};
 use std::time::Duration;
 
 use tokio::net::UdpSocket;
-use tokio::select;
 use tokio::sync::{broadcast, mpsc};
 use tokio::task::AbortHandle;
 use tokio::time::sleep;
-use tracing::{debug, trace, warn};
+use tracing::{debug, warn};
 
 use crate::asyncutil::and_log_err;
 
@@ -58,22 +57,19 @@ impl Socket {
         debug!("rtp: connected to remote");
 
         let sock = self.sock.clone();
-        let in_handle = tokio::spawn(and_log_err(format!("rtp socket {}", addr), async move {
+        let in_handle = tokio::spawn(and_log_err(format!("rtp recv socket {}", addr), async move {
             let mut got_first_packet = false;
 
             let mut buf = vec![0; BUF_SIZE];
-            debug!("rtp: starting the loop");
             loop {
                 let n = sock.recv(&mut buf).await?;
                 if !got_first_packet {
-                    debug!("rtp: got my first packet!");
                     sleep(Duration::from_millis(30)).await;
                     got_first_packet = true;
                 }
                 if n != buf.len() {
                     warn!("got unexpected packet length: {}", n);
                 }
-                debug!("rtp: processing buffer!");
                 for buf_idx in (0..buf.len()).step_by(2) {
                     let sample = i16::from_be_bytes([buf[buf_idx], buf[buf_idx+1]]);
                     let sample = sample as f32 / 2.0_f32.powi(15);
@@ -86,7 +82,7 @@ impl Socket {
         self.in_handle = Some(in_handle);
 
         let sock = self.sock.clone();
-        let out_handle = tokio::spawn(and_log_err(format!("rtp socket {}", addr), async move {
+        let out_handle = tokio::spawn(and_log_err(format!("rtp send socket {}", addr), async move {
             let mut buf = vec![0; BUF_SIZE];
             let mut buf_idx = 0;
             loop {

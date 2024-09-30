@@ -3,7 +3,6 @@ use std::error::Error;
 use goertzel::audio;
 use tokio::net::UdpSocket;
 use tokio::select;
-use tokio::sync::broadcast;
 use tracing::info;
 use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 
