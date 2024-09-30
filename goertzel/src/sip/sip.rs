@@ -225,7 +225,7 @@ impl Txn {
         };
         let addr = SocketAddr::new(host_with_port.host.try_into()?, *host_with_port.port.unwrap_or(rsip::Port::new(5060_u16)).value());
         Ok((
-            addr,
+            (*SERVER_ADDR).clone(),
             SipMessage::Response(Response{
                 status_code,
                 version: Version::V2,
