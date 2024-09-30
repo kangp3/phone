@@ -5,7 +5,7 @@ use tokio::select;
 use tracing::error;
 
 
-pub async fn and_log_err(tag: &str, fut: impl Future<Output=Result<(), Box<dyn Error>>>) {
+pub async fn and_log_err(tag: impl AsRef<str> + tracing::Value, fut: impl Future<Output=Result<(), Box<dyn Error>>>) {
     if let Err(e) = fut.await {
         error!(tag, e);
     }

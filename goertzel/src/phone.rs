@@ -431,6 +431,11 @@ impl Phone {
                                             let connection = req_sdp.connection.clone().ok_or("connection line doesn't exist")?;
                                             connection.connection_address.base
                                         };
+                                        if !rtp_sock.is_in_net(sdp_ip) {
+                                            debug!("THE IP {} IS NOT IN NET: {}", sdp_ip, rtp_sock.is_in_net(sdp_ip));
+                                            let (addr, resp) = txn.response_to(req.clone(), rsip::StatusCode::NotAcceptableHere, vec![])?;
+                                            txn.tx_ch.send((addr, resp)).await?;
+                                        }
                                         let mut sdp_port = None;
                                         for desc in &req_sdp.media_descriptions {
                                             if desc.media.media == MediaType::Audio {

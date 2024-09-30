@@ -1,6 +1,6 @@
 use std::error::Error;
-use std::net::SocketAddr;
-use std::sync::Arc;
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::sync::{Arc, LazyLock};
 use std::time::Duration;
 
 use tokio::net::UdpSocket;
@@ -16,11 +16,15 @@ use crate::asyncutil::and_log_err;
 const SAMPLES_PER_BUF: usize = 960;  // 20ms of samples @ 48k
 const BUF_SIZE: usize = 2 * SAMPLES_PER_BUF;
 
+static NET_ADDR: LazyLock<Ipv4Addr> = LazyLock::new(|| "192.168.12.0".parse().unwrap());
+const NET_MASK: u32 = 0xffffff00;
 
 #[derive(Clone)]
 pub struct Socket {
     sock: Arc<UdpSocket>,
     handle: Option<AbortHandle>,
+
+    remote: Option<SocketAddr>
 }
 
 impl Socket {
@@ -28,7 +32,9 @@ impl Socket {
         let sock = UdpSocket::bind("0.0.0.0:19512").await?;
         Ok(Self{
             sock: Arc::new(sock),
-            handle: None
+            handle: None,
+
+            remote: None,
         })
     }
 
@@ -36,13 +42,21 @@ impl Socket {
         Ok(self.sock.local_addr().map(|addr| addr.port())?)
     }
 
+    pub fn is_in_net(&self, ip: IpAddr) -> bool {
+        match ip {
+            IpAddr::V4(ip) => ip.to_bits() & NET_MASK == (*NET_ADDR).to_bits(),
+            IpAddr::V6(_) => false,
+        }
+    }
+
     pub async fn connect(&mut self, addr: SocketAddr, mut audio_in: broadcast::Receiver<f32>, audio_out: mpsc::Sender<f32>, n_channels: u16) -> Result<(), Box<dyn Error>> {
+        self.remote = Some(addr);
         debug!("rtp: connecting to remote at {}", addr);
         self.sock.connect(addr).await?;
         debug!("rtp: connected to remote");
 
         let sock = self.sock.clone();
-        let handle = tokio::spawn(and_log_err("rtp socket", async move {
+        let handle = tokio::spawn(and_log_err(format!("rtp socket {}", addr), async move {
             let mut got_first_packet = false;
 
             let mut in_buf = vec![0; BUF_SIZE];
@@ -93,7 +107,7 @@ impl Socket {
 
 impl Drop for Socket {
     fn drop(&mut self) {
-        debug!("ope i dropped an RTP sock 🧦");
+        debug!("ope i dropped an RTP sock 🧦 connected to {}", self.remote.unwrap_or("0.0.0.0:0".parse().unwrap()));
         match &self.handle {
             Some(handle) => {
                 debug!("aborting task");
