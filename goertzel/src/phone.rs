@@ -1,10 +1,12 @@
 use std::error::Error;
 use std::net::SocketAddr;
+use std::str::FromStr;
 use std::time::Duration;
 
 use rsip::prelude::{HeadersExt, ToTypedHeader};
 use rsip::SipMessage;
 use sdp_rs::lines::media::MediaType;
+use sdp_rs::SessionDescription;
 use tokio::process::Command;
 use tokio::select;
 use tokio::sync::{broadcast, mpsc};
@@ -424,13 +426,13 @@ impl Phone {
                             msg = txn.rx_ch.recv() => match msg.ok_or("closed rx channel in connected")? {
                                 SipMessage::Request(req) => match req.method {
                                     rsip::Method::Invite => {
-                                        let sdp = txn.sdp_from(req.clone())?;
+                                        let req_sdp = SessionDescription::from_str(std::str::from_utf8(&req.body)?)?;
                                         let sdp_ip = {
-                                            let connection = sdp.connection.clone().ok_or("connection line doesn't exist")?;
+                                            let connection = req_sdp.connection.clone().ok_or("connection line doesn't exist")?;
                                             connection.connection_address.base
                                         };
                                         let mut sdp_port = None;
-                                        for desc in &sdp.media_descriptions {
+                                        for desc in &req_sdp.media_descriptions {
                                             if desc.media.media == MediaType::Audio {
                                                 sdp_port = Some(desc.media.port);
                                             }
@@ -441,6 +443,8 @@ impl Phone {
                                         let audio_in_ch = self.audio_in_ch.subscribe();
                                         let audio_out_ch = self.audio_out_ch.clone();
                                         rtp_sock.connect(sdp_addr, audio_in_ch, audio_out_ch, self.audio_out_n_channels).await?;
+
+                                        let sdp = txn.sdp_from(req.clone())?;
                                         let (addr, resp) = txn.sdp_response_to(req, rsip::StatusCode::OK, sdp)?;
                                         txn.tx_ch.send((addr, resp)).await?;
 
