@@ -22,7 +22,8 @@ const NET_MASK: u32 = 0xffffff00;
 #[derive(Clone)]
 pub struct Socket {
     sock: Arc<UdpSocket>,
-    handle: Option<AbortHandle>,
+    in_handle: Option<AbortHandle>,
+    out_handle: Option<AbortHandle>,
 
     remote: Option<SocketAddr>
 }
@@ -32,7 +33,8 @@ impl Socket {
         let sock = UdpSocket::bind("0.0.0.0:19512").await?;
         Ok(Self{
             sock: Arc::new(sock),
-            handle: None,
+            in_handle: None,
+            out_handle: None,
 
             remote: None,
         })
@@ -56,50 +58,50 @@ impl Socket {
         debug!("rtp: connected to remote");
 
         let sock = self.sock.clone();
-        let handle = tokio::spawn(and_log_err(format!("rtp socket {}", addr), async move {
+        let in_handle = tokio::spawn(and_log_err(format!("rtp socket {}", addr), async move {
             let mut got_first_packet = false;
 
-            let mut in_buf = vec![0; BUF_SIZE];
-
-            let mut out_buf = vec![0; BUF_SIZE];
-            let mut out_idx = 0;
+            let mut buf = vec![0; BUF_SIZE];
             debug!("rtp: starting the loop");
             loop {
-                select! {
-                    n = sock.recv(&mut in_buf) => {
-                        if !got_first_packet {
-                            debug!("rtp: got my first packet!");
-                            sleep(Duration::from_millis(30)).await;
-                            got_first_packet = true;
-                        }
-                        let n = n?;
-                        if n != in_buf.len() {
-                            warn!("got unexpected packet length: {}", n);
-                        }
-                        debug!("rtp: processing buffer!");
-                        for buf_idx in (0..in_buf.len()).step_by(2) {
-                            let sample = i16::from_be_bytes([in_buf[buf_idx], in_buf[buf_idx+1]]);
-                            let sample = sample as f32 / 2.0_f32.powi(15);
-                            for _ in 0..n_channels {
-                                audio_out.send(sample).await?;
-                            }
-                        }
-                    },
-                    sample = audio_in.recv() => {
-                        let bytes = ((sample? * 2.0_f32.powi(15)) as i16).to_be_bytes();
-                        out_buf[out_idx] = bytes[0];
-                        out_buf[out_idx+1] = bytes[1];
-                        out_idx += 2;
-                        if out_idx == BUF_SIZE {
-                            debug!("rtp: sent a packet!");
-                            sock.send(&out_buf).await?;
-                            out_idx = 0;
-                        }
-                    },
+                let n = sock.recv(&mut buf).await?;
+                if !got_first_packet {
+                    debug!("rtp: got my first packet!");
+                    sleep(Duration::from_millis(30)).await;
+                    got_first_packet = true;
+                }
+                if n != buf.len() {
+                    warn!("got unexpected packet length: {}", n);
+                }
+                debug!("rtp: processing buffer!");
+                for buf_idx in (0..buf.len()).step_by(2) {
+                    let sample = i16::from_be_bytes([buf[buf_idx], buf[buf_idx+1]]);
+                    let sample = sample as f32 / 2.0_f32.powi(15);
+                    for _ in 0..n_channels {
+                        audio_out.send(sample).await?;
+                    }
                 }
             }
         })).abort_handle();
-        self.handle = Some(handle);
+        self.in_handle = Some(in_handle);
+
+        let sock = self.sock.clone();
+        let out_handle = tokio::spawn(and_log_err(format!("rtp socket {}", addr), async move {
+            let mut buf = vec![0; BUF_SIZE];
+            let mut buf_idx = 0;
+            loop {
+                let sample = audio_in.recv().await?;
+                let bytes = ((sample * 2.0_f32.powi(15)) as i16).to_be_bytes();
+                buf[buf_idx] = bytes[0];
+                buf[buf_idx+1] = bytes[1];
+                buf_idx += 2;
+                if buf_idx == BUF_SIZE {
+                    sock.send(&buf).await?;
+                    buf_idx = 0;
+                }
+            }
+        })).abort_handle();
+        self.out_handle = Some(out_handle);
 
         Ok(())
     }
@@ -108,9 +110,16 @@ impl Socket {
 impl Drop for Socket {
     fn drop(&mut self) {
         debug!("ope i dropped an RTP sock 🧦 connected to {}", self.remote.unwrap_or("0.0.0.0:0".parse().unwrap()));
-        match &self.handle {
+        match &self.in_handle {
             Some(handle) => {
-                debug!("aborting task");
+                debug!("aborting in task");
+                handle.abort();
+            },
+            None => {},
+        }
+        match &self.out_handle {
+            Some(handle) => {
+                debug!("aborting out task");
                 handle.abort();
             },
             None => {},

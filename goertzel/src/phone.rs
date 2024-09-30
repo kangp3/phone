@@ -432,9 +432,15 @@ impl Phone {
                                             connection.connection_address.base
                                         };
                                         if !rtp_sock.is_in_net(sdp_ip) {
-                                            debug!("THE IP {} IS NOT IN NET: {}", sdp_ip, rtp_sock.is_in_net(sdp_ip));
                                             let (addr, resp) = txn.response_to(req.clone(), rsip::StatusCode::NotAcceptableHere, vec![])?;
                                             txn.tx_ch.send((addr, resp)).await?;
+                                            match txn.rx_ch.recv().await.ok_or("closed rx channel in connected")? {
+                                                SipMessage::Request(req) => match req.method() {
+                                                    rsip::Method::Ack => continue,
+                                                    _ => Err(format!("got non-ack request during connected: {}", req))?,
+                                                }
+                                                _ => Err("got unexpected response during connected")?,
+                                            }
                                         }
                                         let mut sdp_port = None;
                                         for desc in &req_sdp.media_descriptions {
