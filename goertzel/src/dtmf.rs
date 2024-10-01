@@ -213,7 +213,6 @@ impl DigState {
 
 
 pub fn goertzelme(mut sample_channel: broadcast::Receiver<f32>) -> mpsc::Receiver<u8> {
-    let mut total_sample_idx = 0;
     let mut sample_idx = 0;
     let mut goertzel_idx = 0;
     let mut goertzelers: Vec<_> = (0..(CHUNK_SIZE / WINDOW_INTERVAL))
@@ -224,9 +223,15 @@ pub fn goertzelme(mut sample_channel: broadcast::Receiver<f32>) -> mpsc::Receive
     let (send_ch, rcv_ch) = mpsc::channel(DIGIT_CHANNEL_SIZE);
     tokio::spawn(and_log_err("goertzeling", async move {
         let mut dig_state = DigState::default();
-        loop {
+        'main: loop {
             while sample_idx < WINDOW_INTERVAL {
-                let sample = sample_channel.recv().await;
+                let sample = tokio::select! {
+                    sample = sample_channel.recv() => sample,
+                    _ = send_ch.closed() => {
+                        debug!("goertzel dig ch closed");
+                        break 'main;
+                    },
+                };
                 if let Err(_) = sample {
                     continue;
                 }
@@ -235,13 +240,11 @@ pub fn goertzelme(mut sample_channel: broadcast::Receiver<f32>) -> mpsc::Receive
                     goertzeler.push(sample);
                 }
                 sample_idx += 1;
-                total_sample_idx += 1;
             }
 
             let detected_dig = goertzelers[goertzel_idx].get_digit();
 
             if let Some(dig) = dig_state.poosh(detected_dig) {
-                debug!("{}: {}", dig, total_sample_idx);
                 if let Err(_) = send_ch.send(dig).await { break }
             }
 
@@ -262,7 +265,6 @@ pub fn goertzelme(mut sample_channel: broadcast::Receiver<f32>) -> mpsc::Receive
 
 
 pub fn goertzeliter(mut samples: Box<dyn Iterator<Item=f32>>) -> Result<Vec<u8>, Box<dyn Error>> {
-    let mut total_sample_idx = 0;
     let mut sample_idx = 0;
     let mut goertzel_idx = 0;
     let mut goertzelers: Vec<_> = (0..(CHUNK_SIZE / WINDOW_INTERVAL))
@@ -282,13 +284,11 @@ pub fn goertzeliter(mut samples: Box<dyn Iterator<Item=f32>>) -> Result<Vec<u8>,
                 return Ok(digs);
             }
             sample_idx += 1;
-            total_sample_idx += 1;
         }
 
         let detected_dig = goertzelers[goertzel_idx].get_digit();
 
         if let Some(dig) = dig_state.poosh(detected_dig) {
-            debug!("{}: {}", dig, total_sample_idx);
             digs.push(dig);
         }
 

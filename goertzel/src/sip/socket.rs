@@ -6,7 +6,7 @@ use rsip::{Method, SipMessage};
 use tokio::net::UdpSocket;
 use tokio::select;
 use tokio::sync::mpsc;
-use tracing::debug;
+use tracing::trace;
 
 use crate::asyncutil::and_log_err;
 use crate::sip::Txn;
@@ -34,7 +34,7 @@ pub async fn bind() -> Result<(mpsc::Sender<(SocketAddr, SipMessage)>, mpsc::Rec
                     buf.truncate(len);
                     // TODO(peter): Throw away messages if they don't try_from instead of crashing
                     let msg = SipMessage::try_from(str::from_utf8(&buf)?)?;
-                    debug!("GOT MESSAGE: {}", msg);
+                    trace!("got message:\n{}", msg);
                     let headers = match msg {
                         SipMessage::Request(ref req) => &req.headers,
                         SipMessage::Response(ref resp) => &resp.headers,
@@ -95,7 +95,7 @@ pub async fn bind() -> Result<(mpsc::Sender<(SocketAddr, SipMessage)>, mpsc::Rec
                 },
                 send = outbound_recv.recv() => {
                     let (addr, msg) = send.ok_or("socket send channel closed")?;
-                    debug!("SENT MESSAGE: {}", msg);
+                    trace!("sent message:\n{}", msg);
                     let msg_bytes: Vec<u8> = msg.into();
                     let len = socket.send_to(&msg_bytes, addr).await?;
                     (len == msg_bytes.len()).then_some(()).ok_or("byte len does not match")?;

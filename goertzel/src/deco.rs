@@ -164,7 +164,13 @@ pub fn de_digs(mut goertzel_ch: mpsc::Receiver<u8>, mut notgoertzel_ch: broadcas
 
     tokio::spawn(and_log_err("deco:de_digs goertzel", async move {
         loop {
-            let dig = goertzel_ch.recv().await.ok_or("goertz ch closed")?;
+            let dig = tokio::select! {
+                dig = goertzel_ch.recv() => dig.ok_or("goertz ch closed")?,
+                _ = goertz_send.closed() => {
+                    debug!("goertz send ch closed");
+                    break;
+                },
+            };
             if let Err(_) = goertz_send.send(dig).await { break }
         }
         Ok(())
@@ -172,7 +178,13 @@ pub fn de_digs(mut goertzel_ch: mpsc::Receiver<u8>, mut notgoertzel_ch: broadcas
 
     tokio::spawn(and_log_err("deco:de_digs notgoertzel", async move {
         loop {
-            let dig = notgoertzel_ch.recv().await?;
+            let dig = tokio::select! {
+                dig = notgoertzel_ch.recv() => dig?,
+                _ = notgoertz_send.closed() => {
+                    debug!("notgoertz send ch closed");
+                    break;
+                },
+            };
             if let Err(_) = notgoertz_send.send(dig).await { break }
         }
         Ok(())
@@ -196,7 +208,7 @@ pub fn ding(goertzel_ch: mpsc::Receiver<u8>, notgoertzel_ch: broadcast::Receiver
                     }
                     state = State::new();
                     debug!("char timeout");
-                }
+                },
                 dig = digs_ch.recv() => {
                     let dig = dig.ok_or("digs ch closed")?;
                     let (new_state, cs) = state.poosh(dig)?;
@@ -204,12 +216,17 @@ pub fn ding(goertzel_ch: mpsc::Receiver<u8>, notgoertzel_ch: broadcast::Receiver
                     for c in cs {
                         chars.push(c);
                     }
-                }
+                },
+                _ = send_ch.closed() => {
+                    debug!("ding send ch closed");
+                    break;
+                },
             }
             for c in chars.into_iter() {
                 send_ch.try_send(c)?;
             }
         }
+        Ok(())
     }));
 
     rcv_ch
