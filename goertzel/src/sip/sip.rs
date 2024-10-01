@@ -19,7 +19,8 @@ use rsip::prelude::{HasHeaders, HeadersExt, ToTypedHeader};
 use rsip::typed::{Allow, Authorization, CSeq, Contact, ContentType, From, MediaType, To, Via};
 use rsip::{Auth, Header, Headers, Method, Param, Request, Response, Scheme, SipMessage, StatusCode, Transport, Uri, Version};
 use sdp_rs::{MediaDescription, SessionDescription};
-use tokio::sync::{mpsc, RwLock, RwLockWriteGuard};
+use tokio::sync::{broadcast, mpsc, RwLock, RwLockWriteGuard};
+use tracing::debug;
 use vec1::Vec1;
 
 
@@ -53,9 +54,74 @@ pub static MY_URI: LazyLock<Uri> = LazyLock::new(
     }
 );
 
-pub static TXN_MAILBOXES: LazyLock<Arc<RwLock<HashMap::<String, mpsc::Sender<SipMessage>>>>> = LazyLock::new(|| {
+pub static TXN_MAILBOXES: LazyLock<Arc<RwLock<HashMap::<String, broadcast::Sender<SipMessage>>>>> = LazyLock::new(|| {
     Arc::new(RwLock::new(HashMap::new()))
 });
+
+
+// Responses not tied to a transaction
+pub fn response_to(req: &Request, status_code: StatusCode) -> SipMessage {
+    let mut headers: Headers = Default::default();
+    for header in req.headers().clone() {
+        match header {
+            h@Header::CallId(_) |
+            h@Header::CSeq(_) |
+            h@Header::From(_) |
+            h@Header::To(_) |
+            h@Header::Via(_) => headers.push(h),
+            _ => {},
+        }
+    }
+
+    SipMessage::Response(Response{
+        status_code,
+        version: Version::V2,
+        headers,
+        body: vec![],
+    })
+}
+
+// Requests not tied to a transaction
+pub fn ack_to(resp: &Response) -> SipMessage {
+    let branch: String = format!("{}{}", BRANCH_PREFIX, rand_chars(&mut thread_rng(), 32));
+
+    let mut headers: Headers = Default::default();
+    for header in resp.headers().clone() {
+        match header {
+            h@Header::CallId(_) |
+            h@Header::CSeq(_) |
+            h@Header::From(_) |
+            h@Header::To(_) => headers.push(h),
+            _ => {},
+        }
+    }
+    headers.push(Via{
+        version: Version::V2,
+        transport: Transport::Udp,
+        uri: Uri {
+            host_with_port: (*CLIENT_ADDR).into(),
+            ..Default::default()
+        },
+        params: vec![
+            Param::Branch(branch.into()),
+            Param::Other(OtherParam::from("rport"), None),
+        ],
+    }.into());
+    headers.push(UserAgent::from(format!("{}/{}", USER_AGENT, UA_VERSION)).into());
+    headers.push(ContentLength::from(0).into());
+
+    rsip::SipMessage::Request(Request{
+        method: Method::Ack,
+        uri: Uri {
+            scheme: Some(Scheme::Sip),
+            host_with_port: (*SERVER_ADDR).into(),
+            ..Default::default()
+        },
+        version: Version::V2,
+        headers,
+        body: vec![],
+    })
+}
 
 fn md5(s: String) -> String {
     let mut hasher = Md5::new();
@@ -70,9 +136,10 @@ pub async fn register(out_ch: mpsc::Sender<(SocketAddr, SipMessage)>) -> Result<
         let mailboxes = txn_mailboxes.write().await;
         Txn::new(out_ch, mailboxes)
     };
+    let mut rx_ch = txn.rx_ch.subscribe();
     let msg = SipMessage::Request(txn.register_request());
     txn.tx_ch.send(((*SERVER_ADDR).clone(), msg)).await?;
-    let msg = txn.rx_ch.recv().await.ok_or("closed rx channel")?;
+    let msg = rx_ch.recv().await?;
     if let SipMessage::Response(r) = msg {
         let mut opaque = None;
         let mut nonce = String::new();
@@ -93,7 +160,7 @@ pub async fn register(out_ch: mpsc::Sender<(SocketAddr, SipMessage)>) -> Result<
             req
         });
         txn.tx_ch.send(((*SERVER_ADDR).clone(), msg)).await?;
-        let msg = txn.rx_ch.recv().await.ok_or("closed rx channel")?;
+        let msg = rx_ch.recv().await?;
         match msg {
             SipMessage::Request(_) => Err("expected 200 response to authed register, got request")?,
             SipMessage::Response(r) =>
@@ -104,9 +171,10 @@ pub async fn register(out_ch: mpsc::Sender<(SocketAddr, SipMessage)>) -> Result<
 }
 
 // TODO(peter): Implement Drop on this to make sure mailboxes get cleared out
+#[derive(Clone)]
 pub struct Txn {
     pub tx_ch: mpsc::Sender<(SocketAddr, SipMessage)>,
-    pub rx_ch: mpsc::Receiver<SipMessage>,
+    pub rx_ch: broadcast::Sender<SipMessage>,
 
     cseq: u32,
     call_id: CallId,
@@ -128,14 +196,14 @@ fn micros_since_epoch() -> u128 {
 }
 
 impl Txn {
-    pub fn new(tx_ch: mpsc::Sender<(SocketAddr, SipMessage)>, mut mailboxes: RwLockWriteGuard<'_, HashMap<String, mpsc::Sender<SipMessage>>>) -> Self {
-        let (rx_send_ch, rx_ch) = mpsc::channel(MESSAGE_CHANNEL_SIZE);
+    pub fn new(tx_ch: mpsc::Sender<(SocketAddr, SipMessage)>, mut mailboxes: RwLockWriteGuard<'_, HashMap<String, broadcast::Sender<SipMessage>>>) -> Self {
+        let (rx_ch, _) = broadcast::channel(MESSAGE_CHANNEL_SIZE);
         let mut rng = thread_rng();
         let call_id = CallId::from(format!("{}/{}", ms_since_epoch(), rand_chars(&mut rng, 16)));
         let from_tag = rand_chars(&mut rng, 16).into();
         let to_tag = None;
 
-        mailboxes.insert(call_id.to_string(), rx_send_ch);
+        mailboxes.insert(call_id.to_string(), rx_ch.clone());
 
         Txn {
             tx_ch,
@@ -148,8 +216,8 @@ impl Txn {
         }
     }
 
-    pub fn from_req(req: Request, tx_ch: mpsc::Sender<(SocketAddr, SipMessage)>, mut mailboxes: RwLockWriteGuard<'_, HashMap<String, mpsc::Sender<SipMessage>>>) -> Result<Self, Box<dyn Error>> {
-        let (rx_send_ch, rx_ch) = mpsc::channel(MESSAGE_CHANNEL_SIZE);
+    pub fn from_req(req: Request, tx_ch: mpsc::Sender<(SocketAddr, SipMessage)>, mut mailboxes: RwLockWriteGuard<'_, HashMap<String, broadcast::Sender<SipMessage>>>) -> Result<Self, Box<dyn Error>> {
+        let (rx_ch, _) = broadcast::channel(MESSAGE_CHANNEL_SIZE);
 
         let cseq = req.cseq_header()?.seq()?;
         let call_id = req.call_id_header()?.clone();
@@ -158,7 +226,7 @@ impl Txn {
 
         match mailboxes.entry(call_id.to_string()) {
             Entry::Occupied(_) => Err("mailbox already exists in map")?,
-            Entry::Vacant(e) => e.insert(rx_send_ch),
+            Entry::Vacant(e) => e.insert(rx_ch.clone()),
         };
 
         Ok(Txn {
@@ -173,8 +241,9 @@ impl Txn {
     }
 
     pub fn response_to(&mut self, req: Request, status_code: StatusCode, body: Vec<u8>) -> Result<(SocketAddr, SipMessage), Box<dyn Error>> {
-        let mut headers: Headers = Default::default();
         self.cseq = req.cseq_header()?.seq()?;
+
+        let mut headers: Headers = Default::default();
         for header in req.headers().clone() {
             match header {
                 h@Header::CallId(_) |
@@ -451,3 +520,15 @@ impl Txn {
         req
     }
 }
+
+//impl Drop for Txn {
+//    fn drop(&mut self) {
+//        let call_id = self.call_id.clone();
+//        tokio::spawn(async move {
+//            let txn_mailboxes = TXN_MAILBOXES.clone();
+//            let mut mailboxes = txn_mailboxes.write().await;
+//            debug!("dropping mailbox for {}", call_id);
+//            mailboxes.remove(&call_id.to_string());
+//        });
+//    }
+//}
