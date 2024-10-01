@@ -20,6 +20,7 @@ use rsip::typed::{Allow, Authorization, CSeq, Contact, ContentType, From, MediaT
 use rsip::{Auth, Header, Headers, Method, Param, Request, Response, Scheme, SipMessage, StatusCode, Transport, Uri, Version};
 use sdp_rs::{MediaDescription, SessionDescription};
 use tokio::sync::{mpsc, RwLock, RwLockWriteGuard};
+use tracing::debug;
 use vec1::Vec1;
 
 
@@ -56,6 +57,71 @@ pub static MY_URI: LazyLock<Uri> = LazyLock::new(
 pub static TXN_MAILBOXES: LazyLock<Arc<RwLock<HashMap::<String, mpsc::Sender<SipMessage>>>>> = LazyLock::new(|| {
     Arc::new(RwLock::new(HashMap::new()))
 });
+
+
+// Responses not tied to a transaction
+pub fn response_to(req: &Request, status_code: StatusCode) -> SipMessage {
+    let mut headers: Headers = Default::default();
+    for header in req.headers().clone() {
+        match header {
+            h@Header::CallId(_) |
+            h@Header::CSeq(_) |
+            h@Header::From(_) |
+            h@Header::To(_) |
+            h@Header::Via(_) => headers.push(h),
+            _ => {},
+        }
+    }
+
+    SipMessage::Response(Response{
+        status_code,
+        version: Version::V2,
+        headers,
+        body: vec![],
+    })
+}
+
+// Requests not tied to a transaction
+pub fn ack_to(resp: &Response) -> SipMessage {
+    let branch: String = format!("{}{}", BRANCH_PREFIX, rand_chars(&mut thread_rng(), 32));
+
+    let mut headers: Headers = Default::default();
+    for header in resp.headers().clone() {
+        match header {
+            h@Header::CallId(_) |
+            h@Header::CSeq(_) |
+            h@Header::From(_) |
+            h@Header::To(_) => headers.push(h),
+            _ => {},
+        }
+    }
+    headers.push(Via{
+        version: Version::V2,
+        transport: Transport::Udp,
+        uri: Uri {
+            host_with_port: (*CLIENT_ADDR).into(),
+            ..Default::default()
+        },
+        params: vec![
+            Param::Branch(branch.into()),
+            Param::Other(OtherParam::from("rport"), None),
+        ],
+    }.into());
+    headers.push(UserAgent::from(format!("{}/{}", USER_AGENT, UA_VERSION)).into());
+    headers.push(ContentLength::from(0).into());
+
+    rsip::SipMessage::Request(Request{
+        method: Method::Ack,
+        uri: Uri {
+            scheme: Some(Scheme::Sip),
+            host_with_port: (*SERVER_ADDR).into(),
+            ..Default::default()
+        },
+        version: Version::V2,
+        headers,
+        body: vec![],
+    })
+}
 
 fn md5(s: String) -> String {
     let mut hasher = Md5::new();
@@ -173,8 +239,9 @@ impl Txn {
     }
 
     pub fn response_to(&mut self, req: Request, status_code: StatusCode, body: Vec<u8>) -> Result<(SocketAddr, SipMessage), Box<dyn Error>> {
-        let mut headers: Headers = Default::default();
         self.cseq = req.cseq_header()?.seq()?;
+
+        let mut headers: Headers = Default::default();
         for header in req.headers().clone() {
             match header {
                 h@Header::CallId(_) |
@@ -449,5 +516,17 @@ impl Txn {
         req.headers.push(from.into());
         req.headers.push(to.into());
         req
+    }
+}
+
+impl Drop for Txn {
+    fn drop(&mut self) {
+        let call_id = self.call_id.clone();
+        tokio::spawn(async move {
+            let txn_mailboxes = TXN_MAILBOXES.clone();
+            let mut mailboxes = txn_mailboxes.write().await;
+            debug!("dropping mailbox for {}", call_id);
+            mailboxes.remove(&call_id.to_string());
+        });
     }
 }

@@ -65,7 +65,7 @@ pub struct Phone {
     pub pulse_ch: broadcast::Sender<u8>,
 
     sip_send_ch: mpsc::Sender<(SocketAddr, SipMessage)>,
-    sip_txn_ch: mpsc::Receiver<sip::Txn>,
+    sip_txn_ch: broadcast::Sender<sip::Txn>,
 
     sip_txn: Option<sip::Txn>,
 

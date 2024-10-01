@@ -2,6 +2,7 @@ use core::str;
 use std::error::Error;
 use std::net::SocketAddr;
 
+use rsip::prelude::HeadersExt;
 use rsip::{Method, SipMessage};
 use tokio::net::UdpSocket;
 use tokio::select;
@@ -9,7 +10,7 @@ use tokio::sync::mpsc;
 use tracing::trace;
 
 use crate::asyncutil::and_log_err;
-use crate::sip::Txn;
+use crate::sip::{ack_to, response_to, Txn, SERVER_ADDR};
 
 use super::TXN_MAILBOXES;
 
@@ -35,61 +36,89 @@ pub async fn bind() -> Result<(mpsc::Sender<(SocketAddr, SipMessage)>, mpsc::Rec
                     // TODO(peter): Throw away messages if they don't try_from instead of crashing
                     let msg = SipMessage::try_from(str::from_utf8(&buf)?)?;
                     trace!("got message:\n{}", msg);
-                    let headers = match msg {
-                        SipMessage::Request(ref req) => &req.headers,
-                        SipMessage::Response(ref resp) => &resp.headers,
-                    };
-                    let mut call_id = None;
-                    for header in headers.iter() {
-                        match &header {
-                            rsip::Header::CallId(h) => {
-                                call_id = Some((*h).to_string());
-                                break;
-                            }
-                            _ => {},
-                        }
-                    }
-                    // TODO(peter): Throw away messages if they don't try_from instead of crashing
-                    let call_id = call_id.ok_or("missing call id")?;
-                    let mut should_create_txn = false;
+                    let call_id: String = msg.call_id_header()?.to_string();
+                    let mut has_mailbox = false;
+                    let mut txn_req = None;
                     {
                         let mailboxes = txn_mailboxes.read().await;
                         match mailboxes.get(&call_id) {
-                            Some(mailbox) => { mailbox.try_send(msg.clone())?; }
+                            Some(mailbox) => {
+                                trace!("has mailbox");
+                                has_mailbox = true;
+                                mailbox.try_send(msg.clone())?;
+                            },
                             None => match msg {
                                 SipMessage::Request(ref req) => match req.method() {
-                                    Method::Invite => should_create_txn = true,
-                                    _ => Err(format!("got non-invite request with no active txn: {}", req))?,
+                                    Method::Invite => {
+                                        trace!("make mailbox");
+                                        txn_req = Some(req);
+                                    },
+                                    _ => trace!("no mailbox"),
                                 },
-                                SipMessage::Response(_) => Err("got a response with no active txn")?,
-                            }
+                                SipMessage::Response(_) => trace!("no mailbox"),
+                            },
                         }
                     }
-                    if should_create_txn {
-                        let txn = if let SipMessage::Request(ref req) = msg {
-                            let mailboxes = txn_mailboxes.write().await;
-                            match Txn::from_req(req.clone(), outbound_ch2.clone(), mailboxes) {
-                                Ok(txn) => Some(txn),
-                                Err(e) => {
-                                    if e.to_string() == "mailbox already exists in map" {
-                                        None
-                                    } else {
-                                        Err(e)?
+                    if !has_mailbox {
+                        match txn_req {
+                            Some(req) => {
+                                if inbound_trx_send_ch.is_closed() {
+                                    let resp = response_to(req, rsip::StatusCode::BusyHere);
+                                    trace!("sending busy resp");
+                                    outbound_ch2.send(((*SERVER_ADDR).clone(), resp)).await?;
+                                } else {
+                                    let txn = {
+                                        let mailboxes = txn_mailboxes.write().await;
+                                        match Txn::from_req(req.clone(), outbound_ch2.clone(), mailboxes) {
+                                            Ok(txn) => Some(txn),
+                                            Err(e) if e.to_string() == "mailbox already exists in map" => None,
+                                            Err(e) => Err(e)?,
+                                        }
+                                    };
+                                    {
+                                        let mailboxes = txn_mailboxes.read().await;
+                                        match mailboxes.get(&call_id) {
+                                            Some(mailbox) => mailbox.send(msg.clone()).await?,
+                                            None => Err("should have a mailbox by now")?,
+                                        };
+                                    }
+                                    if let Some(txn) = txn {
+                                        if let Err(_) = inbound_trx_send_ch.send(txn).await {
+                                            let resp = response_to(req, rsip::StatusCode::BusyHere);
+                                            trace!("sending busy resp");
+                                            outbound_ch2.send(((*SERVER_ADDR).clone(), resp)).await?;
+                                        }
                                     }
                                 }
-                            }
-                        } else { None };
-                        {
-                            let mailboxes = txn_mailboxes.read().await;
-                            match mailboxes.get(&call_id) {
-                                Some(mailbox) => mailbox.send(msg).await?,
-                                None => Err("should have a mailbox by now")?,
-                            };
-                        }
-                        if let Some(txn) = txn {
-                            // TODO(peter): Handle sending back busy tones if the channel is not
-                            // listening
-                            inbound_trx_send_ch.send(txn).await?;
+                            },
+                            None => match msg {
+                                SipMessage::Request(ref req) => match req.method {
+                                    Method::Ack => {},
+                                    Method::Bye |
+                                    Method::Cancel => {
+                                        trace!("sending ok resp");
+                                        let resp = response_to(req, rsip::StatusCode::OK);
+                                        outbound_ch2.send(((*SERVER_ADDR).clone(), resp)).await?;
+                                    },
+                                    Method::Options => {
+                                        trace!("sending ok resp");
+                                        let resp = response_to(req, rsip::StatusCode::OK);
+                                        outbound_ch2.send(((*SERVER_ADDR).clone(), resp)).await?;
+                                        trace!("sending terminated resp");
+                                        let resp = response_to(req, rsip::StatusCode::RequestTerminated);
+                                        outbound_ch2.send(((*SERVER_ADDR).clone(), resp)).await?;
+                                    },
+                                    method => Err(format!("unexpected req with method {}", method))?,
+                                },
+                                SipMessage::Response(ref resp) => match resp.cseq_header()?.method()? {
+                                    Method::Invite if resp.status_code().code() >= 200 => {
+                                        trace!("sending ack req");
+                                        let ack = ack_to(resp);
+                                        outbound_ch2.send(((*SERVER_ADDR).clone(), ack)).await?;
+                                    },
+                                    _ => {},
+                                },
+                            },
                         }
                     }
                 },
