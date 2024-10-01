@@ -33,7 +33,7 @@ const UA_VERSION: &str = "0.1.0";
 const BRANCH_PREFIX: &str = "z9hG4bK";
 const MAX_FORWARDS: u32 = 70;
 
-const USERNAME: LazyLock<String> = LazyLock::new(|| env::var("SIP_USERNAME").unwrap());
+pub const USERNAME: LazyLock<String> = LazyLock::new(|| env::var("SIP_USERNAME").unwrap());
 const PASSWORD: LazyLock<String> = LazyLock::new(|| env::var("SIP_PASSWORD").unwrap());
 pub static SERVER_ADDR: LazyLock<SocketAddr> = LazyLock::new(
     || SocketAddr::from_str(&env::var("SIP_SERVER_ADDRESS").unwrap()).unwrap()
@@ -216,14 +216,14 @@ impl Txn {
         }.into());
         headers.push(ContentLength::from(body.len() as u32).into());
 
-        let host_with_port = {
-            let uri = match req.contact_headers().first() {
-                Some(contact) => contact.uri()?,
-                None => req.via_header()?.uri()?,
-            };
-            uri.host_with_port
-        };
-        let addr = SocketAddr::new(host_with_port.host.try_into()?, *host_with_port.port.unwrap_or(rsip::Port::new(5060_u16)).value());
+        // let host_with_port = {
+        //     let uri = match req.contact_headers().first() {
+        //         Some(contact) => contact.uri()?,
+        //         None => req.via_header()?.uri()?,
+        //     };
+        //     uri.host_with_port
+        // };
+        // let addr = SocketAddr::new(host_with_port.host.try_into()?, *host_with_port.port.unwrap_or(rsip::Port::new(5060_u16)).value());
         Ok((
             (*SERVER_ADDR).clone(),
             SipMessage::Response(Response{

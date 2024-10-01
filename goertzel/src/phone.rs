@@ -284,7 +284,7 @@ impl Phone {
                     let mut number = String::new();
                     loop {
                         select! {
-                            _ = sleep(Duration::from_secs(4)), if (*CONTACTS).contains_key(&number) => {
+                            _ = sleep(Duration::from_secs(1)), if (*CONTACTS).contains_key(&number) && number != (*sip::USERNAME) => {
                                 let to = (*CONTACTS).get(&number).ok_or("contact is missing after I EXPLICITLY checked it")?;
                                 self.to_uri = Some(to.clone());
                                 let msg = SipMessage::Request(txn.invite_request(to.clone()));
@@ -293,22 +293,10 @@ impl Phone {
                                 match msg {
                                     SipMessage::Request(_) => Err("unexpected request")?,
                                     SipMessage::Response(resp) => {
-                                        let mut opaque = None;
-                                        let mut nonce = String::new();
-                                        for header in resp.headers {
-                                            match header {
-                                                rsip::Header::WwwAuthenticate(h) => {
-                                                    let h = h.typed()?;
-                                                    opaque = h.opaque;
-                                                    nonce = h.nonce;
-                                                    break;
-                                                },
-                                                _ => {},
-                                            }
-                                        }
+                                        let auth_header = resp.www_authenticate_header().ok_or("no www auth header")?.typed()?;
                                         let msg = SipMessage::Request({
                                             let mut req = txn.invite_request(to.clone());
-                                            txn.add_auth_to_request(&mut req, opaque, nonce);
+                                            txn.add_auth_to_request(&mut req, auth_header.opaque, auth_header.nonce);
                                             req
                                         });
                                         txn.tx_ch.send(((*SERVER_ADDR).clone(), msg)).await?;
