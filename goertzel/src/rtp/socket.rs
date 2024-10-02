@@ -50,7 +50,7 @@ impl Socket {
         }
     }
 
-    pub async fn connect(&mut self, addr: SocketAddr, mut audio_in: broadcast::Receiver<f32>, audio_out: mpsc::Sender<f32>, n_channels: u16) -> Result<(), Box<dyn Error>> {
+    pub async fn connect(&mut self, addr: SocketAddr, mut audio_in: broadcast::Receiver<i16>, audio_out: mpsc::Sender<i16>) -> Result<(), Box<dyn Error>> {
         self.remote = Some(addr);
         debug!("rtp: connecting to remote at {}", addr);
         self.sock.connect(addr).await?;
@@ -72,10 +72,7 @@ impl Socket {
                 }
                 for buf_idx in (0..buf.len()).step_by(2) {
                     let sample = i16::from_be_bytes([buf[buf_idx], buf[buf_idx+1]]);
-                    let sample = sample as f32 / 2.0_f32.powi(15);
-                    for _ in 0..n_channels {
-                        audio_out.send(sample).await?;
-                    }
+                    audio_out.send(sample).await?;
                 }
             }
         })).abort_handle();
@@ -87,7 +84,7 @@ impl Socket {
             let mut buf_idx = 0;
             loop {
                 let sample = audio_in.recv().await?;
-                let bytes = ((sample * 2.0_f32.powi(15)) as i16).to_be_bytes();
+                let bytes = sample.to_be_bytes();
                 buf[buf_idx] = bytes[0];
                 buf[buf_idx+1] = bytes[1];
                 buf_idx += 2;

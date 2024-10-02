@@ -22,7 +22,6 @@ const DIGIT_CHANNEL_SIZE: usize = 3;
 
 // TODO(peter): Make this a runtime input
 const SAMPLE_FREQ: u32 = 48000;
-const SAMPLE_SCALE_FACTOR: f64 = 32768.0; // 2^15
 
 pub const WINDOW_INTERVAL: usize = 1200;
 pub const CHUNK_SIZE: usize = 1200;  // 12.75ms of sample
@@ -212,7 +211,7 @@ impl DigState {
 }
 
 
-pub fn goertzelme(mut sample_channel: broadcast::Receiver<f32>) -> mpsc::Receiver<u8> {
+pub fn goertzelme(mut sample_channel: broadcast::Receiver<i16>) -> mpsc::Receiver<u8> {
     let mut sample_idx = 0;
     let mut goertzel_idx = 0;
     let mut goertzelers: Vec<_> = (0..(CHUNK_SIZE / WINDOW_INTERVAL))
@@ -235,7 +234,7 @@ pub fn goertzelme(mut sample_channel: broadcast::Receiver<f32>) -> mpsc::Receive
                 if let Err(_) = sample {
                     continue;
                 }
-                let sample = sample? as f64 * SAMPLE_SCALE_FACTOR;
+                let sample = sample? as f64;
                 for goertzeler in goertzelers.iter_mut() {
                     goertzeler.push(sample);
                 }
@@ -264,7 +263,7 @@ pub fn goertzelme(mut sample_channel: broadcast::Receiver<f32>) -> mpsc::Receive
 }
 
 
-pub fn goertzeliter(mut samples: Box<dyn Iterator<Item=f32>>) -> Result<Vec<u8>, Box<dyn Error>> {
+pub fn goertzeliter(mut samples: Box<dyn Iterator<Item=i16>>) -> Result<Vec<u8>, Box<dyn Error>> {
     let mut sample_idx = 0;
     let mut goertzel_idx = 0;
     let mut goertzelers: Vec<_> = (0..(CHUNK_SIZE / WINDOW_INTERVAL))
@@ -278,7 +277,7 @@ pub fn goertzeliter(mut samples: Box<dyn Iterator<Item=f32>>) -> Result<Vec<u8>,
         while sample_idx < WINDOW_INTERVAL {
             if let Some(sample) = samples.next() {
                 for goertzeler in goertzelers.iter_mut() {
-                    goertzeler.push(sample as f64 * SAMPLE_SCALE_FACTOR);
+                    goertzeler.push(sample as f64);
                 }
             } else {
                 return Ok(digs);

@@ -47,8 +47,6 @@ async fn main() -> Result<(), Box<dyn Error>>{
                 }
                 for buf_idx in (0..in_buf.len()).step_by(2) {
                     let sample = i16::from_be_bytes([in_buf[buf_idx], in_buf[buf_idx+1]]);
-                    let sample = sample as f32 / 2.0_f32.powi(15);
-                    spk_ch.send(sample).await?;
                     spk_ch.send(sample).await?;
                 }
             },

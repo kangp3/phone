@@ -7,7 +7,7 @@ use tokio::task::AbortHandle;
 use tracing::debug;
 
 
-const GAIN: f32 = 0.5;
+const GAIN: f32 = 16384.0;  // 2^14
 
 const OFFHOOK_TONES: (u16, u16) = (350, 440);
 const BUSY_TONES: (u16, u16) = (480, 620);
@@ -15,7 +15,7 @@ const RING_TONES: (u16, u16) = (440, 480);
 
 
 pub struct TwoToneGen {
-    samples: Vec<f32>,
+    samples: Vec<i16>,
     sample_rate: u32,
 
     on_count: usize,
@@ -34,7 +34,7 @@ impl TwoToneGen {
         for i in 0..bufsize {
             let samp1 = GAIN * (2. * PI * f1 as f32 * step * i as f32).sin();
             let samp2 = GAIN * (2. * PI * f2 as f32 * step * i as f32).sin();
-            samples.push(samp1+samp2);
+            samples.push((samp1+samp2) as i16);
         }
         Self {
             samples,
@@ -72,7 +72,7 @@ impl TwoToneGen {
         self
     }
 
-    pub fn play(&mut self, ch: mpsc::Sender<f32>, n_channels: u16) {
+    pub fn play(&mut self, ch: mpsc::Sender<i16>) {
         let on_count = self.on_count;
         let off_count = self.off_count;
 
@@ -98,9 +98,7 @@ impl TwoToneGen {
                     sample_idx = (sample_idx + 1) % samples.len();
                     s
                 };
-                for _ in 0..n_channels {
-                    let _ = ch.send(sample).await;
-                }
+                let _ = ch.send(sample).await;
             }
         });
         self.handle = Some(handle.abort_handle());

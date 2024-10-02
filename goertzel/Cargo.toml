@@ -13,6 +13,9 @@ name = "receiver"
 name = "wav"
 required-features = ["wav"]
 
+[[bin]]
+name = "i16_audio"
+
 [patch.crates-io]
 alsa-sys = { path = 'alsa-sys' }
 
@@ -40,4 +43,3 @@ ctrlc = "3.4.5"
 
 [features]
 wav = ["dep:hound", "dep:pico-args"]
-wifi = []

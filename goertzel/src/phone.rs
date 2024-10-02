@@ -52,13 +52,12 @@ pub struct Phone {
     #[cfg(target_os = "linux")]
     _shk_pin: rppal::gpio::InputPin,
 
-    pub audio_in_ch: broadcast::Sender<f32>,
+    pub audio_in_ch: broadcast::Sender<i16>,
     _audio_in_stream: cpal::Stream,
     _audio_in_cfg: cpal::SupportedStreamConfig,
 
-    pub audio_out_ch: mpsc::Sender<f32>,
+    pub audio_out_ch: mpsc::Sender<i16>,
     _audio_out_stream: cpal::Stream,
-    audio_out_n_channels: u16,
     audio_out_sample_rate: u32,
 
     pub hook_ch: broadcast::Sender<SwitchHook>,
@@ -108,7 +107,6 @@ impl Phone {
             audio_out_ch: spk_ch,
             _audio_out_stream: spk_stream,
             audio_out_sample_rate: spk_cfg.sample_rate().0,
-            audio_out_n_channels: spk_cfg.channels(),
 
             hook_ch,
             pulse_ch,
@@ -265,7 +263,7 @@ impl Phone {
                     let mut hook_ch = self.hook_ch.subscribe();
 
                     let mut tone = TwoToneGen::off_hook(self.audio_out_sample_rate);
-                    tone.play(audio_out_ch, self.audio_out_n_channels);
+                    tone.play(audio_out_ch);
 
                     let mut dig_ch = deco::de_digs(goertzel_ch, pulse_ch);
                     let mut txn = {
@@ -366,7 +364,7 @@ impl Phone {
                     let mut hook_ch = self.hook_ch.subscribe();
 
                     let mut tone = TwoToneGen::ring(self.audio_out_sample_rate);
-                    tone.play(audio_out_ch, self.audio_out_n_channels);
+                    tone.play(audio_out_ch);
 
                     loop {
                         select! {
@@ -426,7 +424,7 @@ impl Phone {
 
                                         let audio_in_ch = self.audio_in_ch.subscribe();
                                         let audio_out_ch = self.audio_out_ch.clone();
-                                        rtp_sock.connect(sdp_addr, audio_in_ch, audio_out_ch, self.audio_out_n_channels).await?;
+                                        rtp_sock.connect(sdp_addr, audio_in_ch, audio_out_ch).await?;
 
                                         let sdp = txn.sdp_from(req.clone())?;
                                         let (addr, resp) = txn.sdp_response_to(req, rsip::StatusCode::OK, sdp)?;
@@ -473,7 +471,7 @@ impl Phone {
                     let mut hook_ch = self.hook_ch.subscribe();
 
                     let mut tone = TwoToneGen::busy(self.audio_out_sample_rate);
-                    tone.play(audio_out_ch, self.audio_out_n_channels);
+                    tone.play(audio_out_ch);
 
                     loop {
                         match hook_ch.recv().await {
@@ -535,7 +533,7 @@ impl Phone {
                     let mut hook_ch = self.hook_ch.subscribe();
 
                     let mut tone = TwoToneGen::no_wifi(self.audio_out_sample_rate);
-                    tone.play(audio_out_ch, self.audio_out_n_channels);
+                    tone.play(audio_out_ch);
 
                     select! {
                         wifi_evt = self.get_wifi_creds() => match wifi_evt {

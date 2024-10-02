@@ -20,7 +20,6 @@ use rsip::typed::{Allow, Authorization, CSeq, Contact, ContentType, From, MediaT
 use rsip::{Auth, Header, Headers, Method, Param, Request, Response, Scheme, SipMessage, StatusCode, Transport, Uri, Version};
 use sdp_rs::{MediaDescription, SessionDescription};
 use tokio::sync::{broadcast, mpsc, RwLock, RwLockWriteGuard};
-use tracing::debug;
 use vec1::Vec1;
 
 

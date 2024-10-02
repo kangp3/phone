@@ -37,7 +37,7 @@ async fn main() -> Result<(), Box<dyn Error>>{
     loop {
         select! {
             sample = audio_in_ch.recv() => {
-                let bytes = ((sample? * 2.0_f32.powi(15)) as i16).to_be_bytes();
+                let bytes = sample?.to_be_bytes();
                 out_buf[out_idx] = bytes[0];
                 out_buf[out_idx+1] = bytes[1];
                 out_idx += 2;
