@@ -7,7 +7,7 @@ After=network-online.target
 Restart=on-failure
 RestartSec=20
 Environment=RUST_LOG=debug
-Environment=SIP_SERVER_ADDRESS=192.168.12.182:5060
+Environment=SIP_SERVER_ADDRESS=10.100.8.255:5060
 Environment=SIP_USERNAME=1103
 Environment=SIP_PASSWORD=supersupersecuresecret
 ExecStartPre=/bin/sleep 30

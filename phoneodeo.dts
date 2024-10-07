@@ -12,7 +12,7 @@
             simple-audio-card,name = "phoneodeo";
             status = "okay";
 
-	    capture_link: simple-audio-card,dai-link@0 {
+            capture_link: simple-audio-card,dai-link@0 {
                 format = "i2s";
 
                 bitclock-master = <&r_codec_dai>;

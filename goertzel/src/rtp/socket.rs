@@ -15,8 +15,8 @@ use crate::asyncutil::and_log_err;
 const SAMPLES_PER_BUF: usize = 960;  // 20ms of samples @ 48k
 const BUF_SIZE: usize = 2 * SAMPLES_PER_BUF;
 
-static NET_ADDR: LazyLock<Ipv4Addr> = LazyLock::new(|| "192.168.12.0".parse().unwrap());
-const NET_MASK: u32 = 0xffffff00;
+static NET_ADDR: LazyLock<Ipv4Addr> = LazyLock::new(|| "10.100.0.0".parse().unwrap());
+const NET_MASK: u32 = 0xffff0000;
 
 #[derive(Clone)]
 pub struct Socket {

@@ -9,7 +9,7 @@ use tracing::debug;
 use crate::asyncutil::and_log_err;
 
 
-const RM_PIN: u8 = 17;
+const RM_PIN: u8 = 14;
 const FR_PIN: u8 = 12;
 const RING_FREQ: f64 = 20.;
 const RING_DUTY: f64 = 0.5;

@@ -16,6 +16,9 @@ required-features = ["wav"]
 [[bin]]
 name = "i16_audio"
 
+[[bin]]
+name = "ring"
+
 [patch.crates-io]
 alsa-sys = { path = 'alsa-sys' }
 

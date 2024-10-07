@@ -59,6 +59,7 @@ sudo cp bootconfig.txt /boot/firmware/config.txt
 ### Install phreak.service
 ```
 scp goertzel/phreak.service recurse@peterpi.local:
+scp goertzel/target/arm-unknown-linux-gnueabihf/release/goertzel recurse@peterpi.local:
 ```
 ```
 sudo chown root:root ~/phreak.service
@@ -78,7 +79,8 @@ sudo cp .asoundrc /root
 
 ### Set volume
 ```
-amixer sset PCM -M '30%'
+amixer sset PCM -M '40%'
+sudo alsactl store
 ```
 
 ### Take down Wi-Fi

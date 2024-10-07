@@ -23,10 +23,14 @@ display_auto_detect=1
 auto_initramfs=1
 
 # Enable DRM VC4 V3D driver
-dtoverlay=vc4-kms-v3d
+#dtoverlay=vc4-kms-v3d
+#max_framebuffers=2
+framebuffer_width=800
+framebuffer_height=600
+framebuffer_console=on
+
 dtoverlay=audremap,enable_jack
 dtoverlay=pwm2chan,pin=12,func=2,pin=13,func2=4
-max_framebuffers=2
 
 # Enable I2S ADC input
 dtoverlay=phoneodeo
