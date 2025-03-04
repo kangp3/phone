@@ -1,0 +1,14 @@
+[Unit]
+Description=Asterisk service
+Wants=network-online.target
+After=network.target network-online.target
+
+[Service]
+Restart=always
+RestartSec=4
+ExecStart=/usr/sbin/asterisk -f -vvvvvv -C /etc/asterisk/asterisk.conf
+ExecReload=/usr/sbin/asterisk -x 'core reload'
+LimitCORE=infinity
+
+[Install]
+WantedBy=multi-user.target
