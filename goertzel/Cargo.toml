@@ -19,6 +19,9 @@ name = "i16_audio"
 [[bin]]
 name = "ring"
 
+[[bin]]
+name = "tlser"
+
 [patch.crates-io]
 alsa-sys = { path = 'alsa-sys' }
 
