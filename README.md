@@ -122,6 +122,9 @@ netsh interface portproxy add v4tov4 listenaddress=x.x.x.x listenport=22 connect
 netsh advfirewall firewall add rule name=”Open Port 22 for WSL2” dir=in action=allow protocol=TCP localport=22
 ```
 
+## Helpful links
+- [Security Group](https://us-east-2.console.aws.amazon.com/ec2/home?region=us-east-2#SecurityGroup:group-id=sg-04dbcc9ef474c2027)
+
 ## Relevant Material
 - [SLIC datasheet](https://silvertel.com/images/datasheets/Ag1171-datasheet-Low-cost-ringing-SLIC-with-single-supply.pdf)
 - [gpiozero docs](https://gpiozero.readthedocs.io/en/latest/)
