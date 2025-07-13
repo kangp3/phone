@@ -108,6 +108,16 @@ make &&
 make install
 ```
 
+### Certbot
+```
+sudo apt-get update
+sudo apt-get install -y snapd
+sudo snap install --classic certbot
+sudo ln -s /snap/bin/certbot /usr/bin/certbot
+curl -LsSf https://astral.sh/uv/install.sh | sh
+source $HOME/.local/bin/env
+```
+
 ### socat wiring on Windows
 Cygwin:
 ```
@@ -121,6 +131,12 @@ PowerShell (administrator):
 netsh interface portproxy add v4tov4 listenaddress=x.x.x.x listenport=22 connectaddress=$($(wsl hostname -I).Trim()) connectport=22
 netsh advfirewall firewall add rule name=”Open Port 22 for WSL2” dir=in action=allow protocol=TCP localport=22
 ```
+
+## Helpful links
+- [Security Group](https://us-east-2.console.aws.amazon.com/ec2/home?region=us-east-2#SecurityGroup:group-id=sg-04dbcc9ef474c2027)
+- [Docker Asterisk](https://github.com/mlan/docker-asterisk)
+- [Phil's SSL Guide](https://www.phildev.net/ssl/)
+- [Certbot Asterisk](https://feeding.cloud.geek.nz/posts/using-letsencrypt-cert-with-asterisk/)
 
 ## Relevant Material
 - [SLIC datasheet](https://silvertel.com/images/datasheets/Ag1171-datasheet-Low-cost-ringing-SLIC-with-single-supply.pdf)
