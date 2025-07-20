@@ -114,8 +114,16 @@ sudo apt-get update
 sudo apt-get install -y snapd
 sudo snap install --classic certbot
 sudo ln -s /snap/bin/certbot /usr/bin/certbot
+sudo certbot -d pbx.frandline.com --manual --preferred-challenges dns certonly --manual-auth-hook /home/ubuntu/renew.sh
+sudo su
+```
+```
 curl -LsSf https://astral.sh/uv/install.sh | sh
-source $HOME/.local/bin/env
+```
+
+Test:
+```
+sudo certbot renew --dry-run
 ```
 
 ### socat wiring on Windows

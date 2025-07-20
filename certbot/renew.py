@@ -6,6 +6,7 @@
 # ]
 # ///
 import os
+import time
 
 from cloudflare import Cloudflare
 
@@ -38,6 +39,9 @@ resp = client.dns.records.edit(
     zone_id=frandline_zone.id,
     type=acme_record.type,
     name=acme_record.name,
-    content=CERTBOT_VALIDATION_TOKEN,
+    content=f'"{CERTBOT_VALIDATION_TOKEN}"',
 )
+
+time.sleep(25)
+
 print(f"Updated {acme_record.name} with content {CERTBOT_VALIDATION_TOKEN[:5]}...{CERTBOT_VALIDATION_TOKEN[-5:]}")
