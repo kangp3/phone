@@ -10,14 +10,16 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use itertools::Itertools;
 use local_ip_address::local_ip;
 use md5::{Md5, Digest};
-use rand::distributions::Alphanumeric;
-use rand::{thread_rng, Rng};
+use rand::prelude::*;
+use rand::distr::Alphanumeric;
+use rand::rngs::StdRng;
+use rand::{rng, Rng};
 use rsip::headers::auth::{Algorithm, AuthQop};
 use rsip::headers::{self, auth, CallId, ContentLength, Expires, MaxForwards, UserAgent};
 use rsip::param::{OtherParam, Tag};
 use rsip::prelude::{HasHeaders, HeadersExt, ToTypedHeader};
 use rsip::typed::{Allow, Authorization, CSeq, Contact, ContentType, From, MediaType, To, Via};
-use rsip::{Auth, Header, Headers, Method, Param, Request, Response, Scheme, SipMessage, StatusCode, Transport, Uri, Version};
+use rsip::{Auth, Header, Headers, HostWithPort, Method, Param, Request, Response, Scheme, SipMessage, StatusCode, Transport, Uri, Version};
 use sdp_rs::{MediaDescription, SessionDescription};
 use tokio::sync::{broadcast, mpsc, RwLock, RwLockWriteGuard};
 use vec1::Vec1;
@@ -38,8 +40,14 @@ const PASSWORD: LazyLock<String> = LazyLock::new(|| env::var("SIP_PASSWORD").unw
 pub static SERVER_ADDR: LazyLock<SocketAddr> = LazyLock::new(
     || SocketAddr::from_str(&env::var("SIP_SERVER_ADDRESS").unwrap()).unwrap()
 );
+pub static FRANDLINE_PBX_ADDR: LazyLock<HostWithPort> = LazyLock::new(
+    || HostWithPort::try_from("pbx.frandline.com").unwrap()
+);
 pub static CLIENT_ADDR: LazyLock<SocketAddr> = LazyLock::new(
     || SocketAddr::new(local_ip().unwrap(), 5060)
+);
+pub static FRANDLINE_CLIENT_ADDR: LazyLock<SocketAddr> = LazyLock::new(
+    || SocketAddr::from_str(&env::var("SIP_CLIENT_ADDRESS").unwrap()).unwrap()
 );
 pub static MY_URI: LazyLock<Uri> = LazyLock::new(
     || Uri{
@@ -49,6 +57,17 @@ pub static MY_URI: LazyLock<Uri> = LazyLock::new(
             password: None,
         }),
         host_with_port: (*SERVER_ADDR).into(),
+        ..Default::default()
+    }
+);
+pub static SIPS_URI: LazyLock<Uri> = LazyLock::new(
+    || Uri{
+        scheme: Some(Scheme::Sips),
+        auth: Some(Auth{
+            user: (*USERNAME).clone(),
+            password: None,
+        }),
+        host_with_port: (*FRANDLINE_PBX_ADDR).clone(),
         ..Default::default()
     }
 );
@@ -82,7 +101,7 @@ pub fn response_to(req: &Request, status_code: StatusCode) -> SipMessage {
 
 // Requests not tied to a transaction
 pub fn ack_to(resp: &Response) -> SipMessage {
-    let branch: String = format!("{}{}", BRANCH_PREFIX, rand_chars(&mut thread_rng(), 32));
+    let branch: String = format!("{}{}", BRANCH_PREFIX, rand_chars(&mut rng(), 32));
 
     let mut headers: Headers = Default::default();
     for header in resp.headers().clone() {
@@ -96,7 +115,7 @@ pub fn ack_to(resp: &Response) -> SipMessage {
     }
     headers.push(Via{
         version: Version::V2,
-        transport: Transport::Udp,
+        transport: Transport::Tcp,
         uri: Uri {
             host_with_port: (*CLIENT_ADDR).into(),
             ..Default::default()
@@ -197,7 +216,7 @@ fn micros_since_epoch() -> u128 {
 impl Txn {
     pub fn new(tx_ch: mpsc::Sender<(SocketAddr, SipMessage)>, mut mailboxes: RwLockWriteGuard<'_, HashMap<String, broadcast::Sender<SipMessage>>>) -> Self {
         let (rx_ch, _) = broadcast::channel(MESSAGE_CHANNEL_SIZE);
-        let mut rng = thread_rng();
+        let mut rng = rng();
         let call_id = CallId::from(format!("{}/{}", ms_since_epoch(), rand_chars(&mut rng, 16)));
         let from_tag = rand_chars(&mut rng, 16).into();
         let to_tag = None;
@@ -256,7 +275,7 @@ impl Txn {
                             let tag = match &self.to_tag {
                                 Some(tag) => tag.clone(),
                                 None => {
-                                    let mut rng = thread_rng();
+                                    let mut rng = rng();
                                     let tag: Tag = rand_chars(&mut rng, 16).into();
                                     self.to_tag = Some(tag.clone());
                                     tag
@@ -311,7 +330,7 @@ impl Txn {
 
     fn new_request(&mut self, method: Method, body: Vec<u8>) -> Request {
         self.cseq += 1;
-        let branch: String = format!("{}{}", BRANCH_PREFIX, rand_chars(&mut thread_rng(), 32));
+        let branch: String = format!("{}{}", BRANCH_PREFIX, rand_chars(&mut rng(), 32));
 
         let mut headers: Headers = Default::default();
         headers.push(CSeq{ seq: self.cseq, method }.into());
@@ -375,7 +394,7 @@ impl Txn {
     }
 
     pub fn add_auth_to_request(&self, req: &mut Request, opaque: Option<String>, nonce: String) {
-        let cnonce = format!("{}/{}", ms_since_epoch(), rand_chars(&mut thread_rng(), 16));
+        let cnonce = format!("{}/{}", ms_since_epoch(), rand_chars(&mut rng(), 16));
         // TOOD(peter): Actually track this?
         let nc = 1;
 
@@ -531,3 +550,96 @@ impl Txn {
 //        });
 //    }
 //}
+
+
+#[derive(Clone)]
+pub struct Dialog {
+    cseq: u32,
+    call_id: CallId,
+
+    from_tag: Tag,
+    to_tag: Option<Tag>,
+
+    rng: StdRng,
+}
+
+impl Dialog {
+    pub fn new() -> Self {
+        let mut rng = StdRng::from_rng(&mut rand::rng());
+        let call_id = CallId::from(format!("{}/{}", ms_since_epoch(), rand_chars(&mut rng, 16)));
+
+        let from_tag = rand_chars(&mut rng, 16).into();
+        let to_tag = None;
+
+        Dialog {
+            cseq: 0,
+            call_id,
+
+            from_tag,
+            to_tag,
+
+            rng,
+        }
+    }
+
+    pub fn new_request(&mut self, method: Method, body: Vec<u8>) -> Request {
+        self.cseq += 1;
+        let branch: String = format!("{}{}", BRANCH_PREFIX, rand_chars(&mut self.rng, 32));
+
+        let mut headers: Headers = Default::default();
+        headers.push(CSeq{ seq: self.cseq, method }.into());
+        headers.push(Via{
+            version: Version::V2,
+            transport: Transport::Tls,
+            uri: Uri {
+                host_with_port: (*FRANDLINE_PBX_ADDR).clone(),
+                ..Default::default()
+            },
+            params: vec![
+                Param::Branch(branch.into()),
+                Param::Other(OtherParam::from("rport"), None),
+            ],
+        }.into());
+        headers.push(UserAgent::from(format!("{}/{}", USER_AGENT, UA_VERSION)).into());
+        headers.push(self.call_id.clone().into());
+        headers.push(Contact{
+            display_name: Some((*USERNAME).clone()),
+            uri: Uri {
+                scheme: Some(Scheme::Sips),
+                host_with_port: (*FRANDLINE_CLIENT_ADDR).into(),
+                auth: Some(Auth{
+                    user: (*USERNAME).clone(),
+                    password: None,
+                }),
+                ..Default::default()
+            },
+            params: vec![Param::Q("1".into())],
+        }.into());
+        headers.push(MaxForwards::from(MAX_FORWARDS).into());
+        headers.push(ContentLength::from(body.len() as u32).into());
+
+        // TODO: Move these somewhere else
+        headers.push(From{
+            display_name: Some("1103".to_string()),
+            uri: (*SIPS_URI).clone(),
+            params: vec![self.from_tag.clone().into()],
+        }.into());
+        headers.push(To{
+            display_name: Some("1103".to_string()),
+            uri: (*SIPS_URI).clone(),
+            params: vec![self.from_tag.clone().into()],
+        }.into());
+
+        Request {
+            method,
+            uri: Uri {
+                scheme: Some(Scheme::Sips),
+                host_with_port: (*FRANDLINE_PBX_ADDR).clone(),
+                ..Default::default()
+            },
+            version: Version::V2,
+            headers,
+            body,
+        }
+    }
+}

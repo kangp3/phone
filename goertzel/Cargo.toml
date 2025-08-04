@@ -37,10 +37,11 @@ tracing-subscriber = { version = "0.3.18", features = ["env-filter", "std"] }
 rsip = "0.4.0"
 local-ip-address = "0.6.3"
 md-5 = "0.10.6"
-rand = "0.8.5"
 sdp-rs = "0.2.1"
 vec1 = "1.12.1"
 rustls = "0.23.23"
+webpki-roots = "1.0.2"
+rand = { version = "0.9.2", features = ["thread_rng"] }
 
 [target.arm-unknown-linux-gnueabihf.dependencies]
 rppal = "0.19.0"
