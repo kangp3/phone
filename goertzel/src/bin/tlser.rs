@@ -5,6 +5,8 @@ use std::net::TcpStream;
 use std::sync::Arc;
 
 use goertzel::sip::Dialog;
+use itertools::Itertools;
+use rsip::SipMessage;
 use rustls::{ClientConfig, RootCertStore};
 
 
@@ -42,16 +44,17 @@ pub fn main() -> Result<(), Box<dyn Error>> {
     let _ = stream.write_all(register_bytes.as_bytes())?;
     println!("Wrote to stream: {:?}", register_bytes);
 
-    for res_line in stream.lines() {
-        if let Ok(line) = res_line {
-            if line.len() == 0 {
-                break
-            }
-            println!("Read from stream: {}", line);
-        } else {
-            res_line?;
-        }
-    }
+    let response_str = stream.lines()
+        .into_iter()
+        .map_while(|line| match line {
+            Ok(s) => if s.len() > 0 { Some(s) } else { None },
+            Err(_) => None, // TODO: Handle these errors?
+        })
+        .collect_vec()
+        .iter()
+        .join("\r\n");
+    let response_msg = SipMessage::try_from(response_str)?;
+    println!("Response msg is: {:?}", response_msg);
 
     Ok(())
 }
