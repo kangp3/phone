@@ -27,7 +27,13 @@ pub fn get_config() -> Result<Arc<ClientConfig>, Box<dyn Error>> {
 }
 
 
-pub fn main() -> Result<(), Box<dyn Error>> {
+#[tokio::main]
+pub async fn main() -> Result<(), Box<dyn Error>> {
+    if let Some(ip) = public_ip::addr_v4().await {
+        println!("public ip address: {:?}", ip);
+    } else {
+        println!("couldn't get an IP address");
+    }
     let tls_config = get_config()?;
     println!("Got config");
     let mut conn = rustls::ClientConnection::new(tls_config, SERVER_NAME.try_into()?)?;
@@ -47,7 +53,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
     let response_str = stream.lines()
         .into_iter()
         .map_while(|line| match line {
-            Ok(s) => if s.len() > 0 { Some(s) } else { None },
+            Ok(s) => if s.is_empty() { None } else { Some(s) },
             Err(_) => None, // TODO: Handle these errors?
         })
         .collect_vec()
