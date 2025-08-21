@@ -2,7 +2,7 @@ use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::env;
 use std::error::Error;
-use std::net::SocketAddr;
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::str::FromStr;
 use std::sync::{Arc, LazyLock};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -45,9 +45,6 @@ pub static FRANDLINE_PBX_ADDR: LazyLock<HostWithPort> = LazyLock::new(
 );
 pub static CLIENT_ADDR: LazyLock<SocketAddr> = LazyLock::new(
     || SocketAddr::new(local_ip().unwrap(), 5060)
-);
-pub static FRANDLINE_CLIENT_ADDR: LazyLock<SocketAddr> = LazyLock::new(
-    || SocketAddr::from_str(&env::var("SIP_CLIENT_ADDRESS").unwrap()).unwrap()
 );
 pub static MY_URI: LazyLock<Uri> = LazyLock::new(
     || Uri{
@@ -554,6 +551,8 @@ impl Txn {
 
 #[derive(Clone)]
 pub struct Dialog {
+    ip: Ipv4Addr,
+
     cseq: u32,
     call_id: CallId,
 
@@ -564,7 +563,7 @@ pub struct Dialog {
 }
 
 impl Dialog {
-    pub fn new() -> Self {
+    pub fn new(client_ip: Ipv4Addr) -> Self {
         let mut rng = StdRng::from_rng(&mut rand::rng());
         let call_id = CallId::from(format!("{}/{}", ms_since_epoch(), rand_chars(&mut rng, 16)));
 
@@ -572,6 +571,8 @@ impl Dialog {
         let to_tag = None;
 
         Dialog {
+            ip: client_ip,
+
             cseq: 0,
             call_id,
 
@@ -606,7 +607,7 @@ impl Dialog {
             display_name: Some((*USERNAME).clone()),
             uri: Uri {
                 scheme: Some(Scheme::Sips),
-                host_with_port: (*FRANDLINE_CLIENT_ADDR).into(),
+                host_with_port: IpAddr::V4(self.ip).into(),
                 auth: Some(Auth{
                     user: (*USERNAME).clone(),
                     password: None,
