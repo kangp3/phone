@@ -13,10 +13,15 @@ use crate::asyncutil::and_log_err;
 
 const MESSAGE_CHANNEL_SIZE: usize = 64;
 
-pub async fn bind(
-    host: &str,
-    port: u16,
-) -> Result<(mpsc::Receiver<SipMessage>, mpsc::Sender<SipMessage>), Box<dyn Error>> {
+pub struct TLSConn {
+    pub host: String,
+    pub port: u16,
+
+    pub rx_ch: mpsc::Receiver<SipMessage>,
+    pub tx_ch: mpsc::Sender<SipMessage>,
+}
+
+pub async fn bind(host: &str, port: u16) -> Result<TLSConn, Box<dyn Error>> {
     let connector = get_tls_connector();
     let sock = TcpStream::connect((host, port)).await?;
     let stream = connector
@@ -54,7 +59,13 @@ pub async fn bind(
         }
     }));
 
-    Ok((recv_recv_ch, send_send_ch))
+    Ok(TLSConn {
+        host: String::from(host),
+        port,
+
+        rx_ch: recv_recv_ch,
+        tx_ch: send_send_ch,
+    })
 }
 
 fn get_tls_connector() -> TlsConnector {
