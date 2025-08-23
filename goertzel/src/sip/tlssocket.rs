@@ -44,7 +44,7 @@ impl TLSConn {
                     msg_str.clear();
                 }
             }
-            Ok(()) // TODO: This is an error, we shouldn't ever be here
+            Err("broke out of the lines loop".into()) // TODO: Maybe retry on this error
         }));
 
         let (send_send_ch, mut send_recv_ch) = mpsc::channel(MESSAGE_CHANNEL_SIZE);
@@ -55,7 +55,7 @@ impl TLSConn {
                         let msg_str = format!("{}", sip_msg);
                         send_stream.write_all(msg_str.as_bytes()).await?;
                     }
-                    None => return Ok(()),
+                    None => return Err("got a none on the send".into()), // TODO: Maybe retry on this error
                 }
             }
         }));
