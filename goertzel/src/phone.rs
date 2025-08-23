@@ -14,11 +14,11 @@ use tokio::time::sleep;
 use tracing::{debug, error, info};
 
 use crate::contacts::CONTACTS;
-use crate::sip::{Txn, SERVER_ADDR, TXN_MAILBOXES};
-use crate::{audio, deco, ring, rtp, sip};
 use crate::hook::{self, SwitchHook};
 use crate::nettest::do_i_have_internet;
+use crate::sip::{Txn, SERVER_ADDR, TXN_MAILBOXES};
 use crate::tone::TwoToneGen;
+use crate::{audio, deco, ring, rtp, sip};
 use crate::{dtmf, pulse};
 
 pub enum State {
@@ -27,19 +27,42 @@ pub enum State {
 }
 
 pub enum WiFi {
-    OnHook,  // On hook, standby
-    Await,   // Awaiting user input for SSID and pass
+    OnHook, // On hook, standby
+    Await,  // Awaiting user input for SSID and pass
     Error(Box<dyn Error>),
 }
 
 // TODO(peter): SIP registration steps
 pub enum Dial {
     OnHook,
-    Ringing(Txn, broadcast::Receiver<SipMessage>, rtp::socket::Socket, SipMessage),
+    Ringing(
+        Txn,
+        broadcast::Receiver<SipMessage>,
+        rtp::socket::Socket,
+        SipMessage,
+    ),
     Await,
-    DialOut(Txn, broadcast::Receiver<SipMessage>, rtp::socket::Socket, rsip::headers::From),
-    Dialing(Txn, broadcast::Receiver<SipMessage>, rtp::socket::Socket, rsip::headers::From, rsip::headers::To),
-    Connected(Txn, broadcast::Receiver<SipMessage>, rtp::socket::Socket, rsip::Uri, rsip::headers::From, rsip::headers::To),
+    DialOut(
+        Txn,
+        broadcast::Receiver<SipMessage>,
+        rtp::socket::Socket,
+        rsip::headers::From,
+    ),
+    Dialing(
+        Txn,
+        broadcast::Receiver<SipMessage>,
+        rtp::socket::Socket,
+        rsip::headers::From,
+        rsip::headers::To,
+    ),
+    Connected(
+        Txn,
+        broadcast::Receiver<SipMessage>,
+        rtp::socket::Socket,
+        rsip::Uri,
+        rsip::headers::From,
+        rsip::headers::To,
+    ),
     Busy,
     Error(Box<dyn Error>),
 }
@@ -211,7 +234,8 @@ impl Phone {
                             params: from.params,
                         }
                     };
-                    let (addr, resp) = txn.response_to(invite.clone(), rsip::StatusCode::Ringing, vec![])?;
+                    let (addr, resp) =
+                        txn.response_to(invite.clone(), rsip::StatusCode::Ringing, vec![])?;
                     txn.tx_ch.send((addr, resp)).await?;
 
                     loop {
@@ -254,7 +278,7 @@ impl Phone {
                             },
                         }
                     }
-                },
+                }
                 State::Connected(Dial::Await) => {
                     debug!("phone picked up");
                     let audio_out_ch = self.audio_out_ch.clone();
@@ -357,8 +381,14 @@ impl Phone {
                             },
                         }
                     }
-                },
-                State::Connected(Dial::Dialing(mut txn, mut txn_rx_ch, rtp_sock, local, remote)) => {
+                }
+                State::Connected(Dial::Dialing(
+                    mut txn,
+                    mut txn_rx_ch,
+                    rtp_sock,
+                    local,
+                    remote,
+                )) => {
                     debug!("dialing");
                     let audio_out_ch = self.audio_out_ch.clone();
                     let mut hook_ch = self.hook_ch.subscribe();
@@ -387,8 +417,15 @@ impl Phone {
                             },
                         }
                     }
-                },
-                State::Connected(Dial::Connected(mut txn, mut txn_rx_ch, mut rtp_sock, peer, local, remote)) => {
+                }
+                State::Connected(Dial::Connected(
+                    mut txn,
+                    mut txn_rx_ch,
+                    mut rtp_sock,
+                    peer,
+                    local,
+                    remote,
+                )) => {
                     debug!("connected yay");
                     let mut hook_ch = self.hook_ch.subscribe();
 
@@ -464,7 +501,7 @@ impl Phone {
                             },
                         }
                     }
-                },
+                }
                 State::Connected(Dial::Busy) => {
                     debug!("busy");
                     let audio_out_ch = self.audio_out_ch.clone();
@@ -476,11 +513,11 @@ impl Phone {
                     loop {
                         match hook_ch.recv().await {
                             Ok(SwitchHook::ON) => break State::Connected(Dial::OnHook),
-                            Ok(SwitchHook::OFF) => {},
+                            Ok(SwitchHook::OFF) => {}
                             Err(e) => break State::Connected(Dial::Error(Box::new(e))),
                         }
                     }
-                },
+                }
                 State::Connected(Dial::Error(e)) => {
                     error!(e);
                     let mut hook_ch = self.hook_ch.subscribe();
@@ -488,7 +525,7 @@ impl Phone {
                     loop {
                         match hook_ch.recv().await {
                             Ok(SwitchHook::ON) => break State::Connected(Dial::OnHook),
-                            Ok(SwitchHook::OFF) => {},
+                            Ok(SwitchHook::OFF) => {}
                             Err(e) => break State::Disconnected(WiFi::Error(Box::new(e))),
                         }
                     }
@@ -517,10 +554,12 @@ impl Phone {
                             }
                         }
                     };
-                    if let Some(state) = new_state { state } else {
+                    if let Some(state) = new_state {
+                        state
+                    } else {
                         loop {
                             match hook_ch.recv().await {
-                                Ok(SwitchHook::ON) => {},
+                                Ok(SwitchHook::ON) => {}
                                 Ok(SwitchHook::OFF) => break State::Disconnected(WiFi::Await),
                                 Err(e) => break State::Disconnected(WiFi::Error(Box::new(e))),
                             }
@@ -557,7 +596,7 @@ impl Phone {
                     loop {
                         match hook_ch.recv().await {
                             Ok(SwitchHook::ON) => break State::Disconnected(WiFi::OnHook),
-                            Ok(SwitchHook::OFF) => {},
+                            Ok(SwitchHook::OFF) => {}
                             Err(e) => break State::Disconnected(WiFi::Error(Box::new(e))),
                         }
                     }

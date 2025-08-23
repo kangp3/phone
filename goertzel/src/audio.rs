@@ -3,19 +3,21 @@ use std::thread;
 use std::time::Duration;
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use cpal::{InputCallbackInfo, OutputCallbackInfo, Sample, SampleFormat, Stream, StreamConfig, SupportedStreamConfig};
+use cpal::{
+    InputCallbackInfo, OutputCallbackInfo, Sample, SampleFormat, Stream, StreamConfig,
+    SupportedStreamConfig,
+};
 use tokio::sync::{broadcast, mpsc};
 use tracing::info;
 
-
 const INPUT_SAMPLE_RATE: u32 = 48000;
-const INPUT_BUF_SIZE: usize = 1<<16;
+const INPUT_BUF_SIZE: usize = 1 << 16;
 
 const OUTPUT_SAMPLE_RATE: u32 = 48000;
-const OUTPUT_BUF_SIZE: usize = 1<<12;
+const OUTPUT_BUF_SIZE: usize = 1 << 12;
 
-
-pub fn get_input_channel() -> Result<(broadcast::Sender<i16>, Stream, SupportedStreamConfig), Box<dyn Error>> {
+pub fn get_input_channel(
+) -> Result<(broadcast::Sender<i16>, Stream, SupportedStreamConfig), Box<dyn Error>> {
     let (send_ch, _rcv_ch) = broadcast::channel(INPUT_BUF_SIZE);
     let send_ch_i16 = send_ch.clone();
     let send_ch_f32 = send_ch.clone();
@@ -59,7 +61,7 @@ pub fn get_input_channel() -> Result<(broadcast::Sender<i16>, Stream, SupportedS
             let _ = send_ch_f32.send((*sample * 2.0_f32.powi(15)) as i16);
         }
     };
-    let handle_err = move |_| { panic!("Fuck error handling 😮") };
+    let handle_err = move |_| panic!("Fuck error handling 😮");
 
     let stream = match supported_config.sample_format() {
         SampleFormat::I16 => device.build_input_stream(&config, handle_i16, handle_err, None)?,
@@ -73,7 +75,11 @@ pub fn get_input_channel() -> Result<(broadcast::Sender<i16>, Stream, SupportedS
 }
 
 #[cfg(feature = "wav")]
-pub fn get_wav_samples(fname: String, start_idx: Option<u32>, end_idx: Option<u32>) -> Box<dyn Iterator<Item=i16>> {
+pub fn get_wav_samples(
+    fname: String,
+    start_idx: Option<u32>,
+    end_idx: Option<u32>,
+) -> Box<dyn Iterator<Item = i16>> {
     let mut reader = hound::WavReader::open(fname).unwrap();
     let total_samples = (&reader).len();
     let start_idx = start_idx.unwrap_or(0);
@@ -84,20 +90,36 @@ pub fn get_wav_samples(fname: String, start_idx: Option<u32>, end_idx: Option<u3
     let reader_bits = reader.spec().bits_per_sample;
     let n_channels = reader.spec().channels;
 
-    let samples: Box<dyn Iterator<Item=Result<i16, hound::Error>> + Send> = {
+    let samples: Box<dyn Iterator<Item = Result<i16, hound::Error>> + Send> = {
         match (sample_format, reader_bits) {
-            (hound::SampleFormat::Float, _) => Box::new(reader.into_samples::<f32>().map(|s| Ok((s? * 2.0_f32.powi(15)) as i16))),
-            (hound::SampleFormat::Int, 8) => Box::new(reader.into_samples::<i8>().map(|s| Ok((s? as i16) << 8))),
-            (hound::SampleFormat::Int, 16) => Box::new(reader.into_samples::<i16>().map(|s| Ok(s?))),
-            (hound::SampleFormat::Int, 32) => Box::new(reader.into_samples::<i32>().map(|s| Ok((s? >> 16) as i16))),
+            (hound::SampleFormat::Float, _) => Box::new(
+                reader
+                    .into_samples::<f32>()
+                    .map(|s| Ok((s? * 2.0_f32.powi(15)) as i16)),
+            ),
+            (hound::SampleFormat::Int, 8) => {
+                Box::new(reader.into_samples::<i8>().map(|s| Ok((s? as i16) << 8)))
+            }
+            (hound::SampleFormat::Int, 16) => {
+                Box::new(reader.into_samples::<i16>().map(|s| Ok(s?)))
+            }
+            (hound::SampleFormat::Int, 32) => {
+                Box::new(reader.into_samples::<i32>().map(|s| Ok((s? >> 16) as i16)))
+            }
             (hound::SampleFormat::Int, n) => panic!("stinky sample format: {}", n),
         }
     };
 
-    Box::new(samples.step_by(n_channels.into()).take((end_idx - start_idx) as usize).map(|s| s.unwrap()))
+    Box::new(
+        samples
+            .step_by(n_channels.into())
+            .take((end_idx - start_idx) as usize)
+            .map(|s| s.unwrap()),
+    )
 }
 
-pub fn get_output_channel() -> Result<(mpsc::Sender<i16>, Stream, SupportedStreamConfig), Box<dyn Error>> {
+pub fn get_output_channel(
+) -> Result<(mpsc::Sender<i16>, Stream, SupportedStreamConfig), Box<dyn Error>> {
     let host = cpal::default_host();
     let device = loop {
         if let Some(device) = host.default_output_device() {
@@ -144,7 +166,7 @@ pub fn get_output_channel() -> Result<(mpsc::Sender<i16>, Stream, SupportedStrea
                     sample_idx += 1;
                 }
             },
-            move |_| { panic!("Fuck error handling (output) 😮") },
+            move |_| panic!("Fuck error handling (output) 😮"),
             None,
         )?,
         SampleFormat::F32 => device.build_output_stream(
@@ -162,7 +184,7 @@ pub fn get_output_channel() -> Result<(mpsc::Sender<i16>, Stream, SupportedStrea
                     sample_idx += 1;
                 }
             },
-            move |_| { panic!("Fuck error handling (output) 😮") },
+            move |_| panic!("Fuck error handling (output) 😮"),
             None,
         )?,
         _ => Err("invalid sample format")?,

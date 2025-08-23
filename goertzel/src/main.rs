@@ -6,8 +6,7 @@ use goertzel::phone::Phone;
 use goertzel::ring;
 use tokio::time::sleep;
 use tracing::{error, info};
-use tracing_subscriber::{EnvFilter, fmt, prelude::*};
-
+use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {

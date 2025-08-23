@@ -5,7 +5,6 @@ use goertzel::sip::{add_auth_to_request, tlssocket, Dialog};
 use rsip::prelude::*;
 use rsip::{Header, Response};
 
-
 #[tokio::main]
 pub async fn main() -> Result<(), Box<dyn Error>> {
     let ip = public_ip::addr_v4().await.ok_or("no ip")?;

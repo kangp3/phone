@@ -1,8 +1,7 @@
 use std::error::Error;
 
 use goertzel::ring;
-use tracing_subscriber::{EnvFilter, fmt, prelude::*};
-
+use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
@@ -14,4 +13,3 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let _ring = ring::ring_phone()?;
     loop {}
 }
-

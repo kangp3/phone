@@ -6,13 +6,11 @@ use tokio::sync::mpsc;
 use tokio::task::AbortHandle;
 use tracing::debug;
 
-
-const GAIN: f32 = 16384.0;  // 2^14
+const GAIN: f32 = 16384.0; // 2^14
 
 const OFFHOOK_TONES: (u16, u16) = (350, 440);
 const BUSY_TONES: (u16, u16) = (480, 620);
 const RING_TONES: (u16, u16) = (440, 480);
-
 
 pub struct TwoToneGen {
     samples: Vec<i16>,
@@ -34,7 +32,7 @@ impl TwoToneGen {
         for i in 0..bufsize {
             let samp1 = GAIN * (2. * PI * f1 as f32 * step * i as f32).sin();
             let samp2 = GAIN * (2. * PI * f2 as f32 * step * i as f32).sin();
-            samples.push((samp1+samp2) as i16);
+            samples.push((samp1 + samp2) as i16);
         }
         Self {
             samples,
@@ -110,7 +108,7 @@ impl Drop for TwoToneGen {
         debug!("dropping tone");
         match &self.handle {
             Some(handle) => handle.abort(),
-            None => {},
+            None => {}
         }
     }
 }

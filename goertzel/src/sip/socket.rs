@@ -14,11 +14,16 @@ use crate::sip::{ack_to, response_to, Txn, SERVER_ADDR};
 
 use super::TXN_MAILBOXES;
 
-
 const BUF_SIZE: usize = 4096;
 const MESSAGE_CHANNEL_SIZE: usize = 64;
 
-pub async fn bind() -> Result<(mpsc::Sender<(SocketAddr, SipMessage)>, broadcast::Sender<(Txn, SipMessage)>), Box<dyn Error>> {
+pub async fn bind() -> Result<
+    (
+        mpsc::Sender<(SocketAddr, SipMessage)>,
+        broadcast::Sender<(Txn, SipMessage)>,
+    ),
+    Box<dyn Error>,
+> {
     let socket = UdpSocket::bind("0.0.0.0:5060").await?;
 
     let (inbound_trx_send_ch, _) = broadcast::channel(MESSAGE_CHANNEL_SIZE);

@@ -7,11 +7,11 @@ use tracing::{trace, warn};
 use crate::asyncutil::and_log_err;
 use crate::hook::SwitchHook;
 
-
 const PULSE_TIMEOUT_MS: u64 = 150;
 
-
-pub fn notgoertzelme(mut shk_ch: broadcast::Receiver<SwitchHook>) -> (
+pub fn notgoertzelme(
+    mut shk_ch: broadcast::Receiver<SwitchHook>,
+) -> (
     broadcast::Sender<u8>,
     broadcast::Receiver<u8>,
     broadcast::Sender<SwitchHook>,
@@ -59,5 +59,10 @@ pub fn notgoertzelme(mut shk_ch: broadcast::Receiver<SwitchHook>) -> (
         }
     }));
 
-    (digit_send_ch2, digit_recv_ch, onhook_send_ch2, onhook_recv_ch)
+    (
+        digit_send_ch2,
+        digit_recv_ch,
+        onhook_send_ch2,
+        onhook_recv_ch,
+    )
 }

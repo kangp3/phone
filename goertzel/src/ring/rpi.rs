@@ -8,12 +8,10 @@ use tracing::debug;
 
 use crate::asyncutil::and_log_err;
 
-
 const RM_PIN: u8 = 14;
 const FR_PIN: u8 = 12;
 const RING_FREQ: f64 = 20.;
 const RING_DUTY: f64 = 0.5;
-
 
 pub struct RingHandle {
     handle: AbortHandle,
@@ -34,8 +32,9 @@ pub fn ring_phone() -> Result<RingHandle, Box<dyn Error>> {
             fr.clear_pwm()?;
             sleep(Duration::from_secs(1)).await;
         }
-    })).abort_handle();
-    Ok(RingHandle{ handle })
+    }))
+    .abort_handle();
+    Ok(RingHandle { handle })
 }
 
 impl Drop for RingHandle {

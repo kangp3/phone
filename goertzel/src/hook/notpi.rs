@@ -4,7 +4,6 @@ use tracing::{debug, warn};
 
 use crate::hook::SwitchHook;
 
-
 pub fn try_register_shk() -> Result<((), Sender<SwitchHook>, Receiver<SwitchHook>), ctrlc::Error> {
     debug!("Registering SHK handler...");
 
@@ -14,7 +13,11 @@ pub fn try_register_shk() -> Result<((), Sender<SwitchHook>, Receiver<SwitchHook
 
     // TODO(peter): Use SIGUSR1 (10) for this
     ctrlc::set_handler(move || {
-        if let Err(e) = shk_send_ch2.send(if on_hook { SwitchHook::OFF } else { SwitchHook::ON }) {
+        if let Err(e) = shk_send_ch2.send(if on_hook {
+            SwitchHook::OFF
+        } else {
+            SwitchHook::ON
+        }) {
             warn!("{}", e);
         }
         on_hook = !on_hook;

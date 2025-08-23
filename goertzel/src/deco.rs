@@ -7,13 +7,11 @@ use tracing::debug;
 use crate::asyncutil::and_log_err;
 use crate::dtmf::{NULL, OCTOTHORPE, SEXTILE};
 
-
 const MODE: u8 = 1;
 
 const CHAR_TIMEOUT_S: u64 = 3;
 const DIGS_CHANNEL_SIZE: usize = 1024;
 const CHARS_CHANNEL_SIZE: usize = 64;
-
 
 #[derive(PartialEq)]
 enum State {
@@ -28,7 +26,6 @@ impl Default for State {
         State::Lower((NULL, 0))
     }
 }
-
 
 // TODO: Wrap this in another struct that can manage the state and handle emitting to channel
 impl State {
@@ -51,9 +48,11 @@ impl State {
                 Self::default()
             }
 
-            State::Lower((n@(2..=9), _)) |
-            State::Upper((n@(2..=9), _)) |
-            State::Symbol((n@(2..=9), _)) if dig != n => {
+            State::Lower((n @ (2..=9), _))
+            | State::Upper((n @ (2..=9), _))
+            | State::Symbol((n @ (2..=9), _))
+                if dig != n =>
+            {
                 if let Some(ch) = self.emit() {
                     c.push(ch);
                 }
@@ -63,13 +62,21 @@ impl State {
             }
 
             State::Lower((NULL, 0)) if (2..=9).contains(&dig) => State::Lower((dig, 1)),
-            State::Lower((n@(7|9), m@(1..=3))) |
-            State::Lower((n@(2..=6|8), m@(1..=2))) if n == dig => State::Lower((n, m+1)),
+            State::Lower((n @ (7 | 9), m @ (1..=3)))
+            | State::Lower((n @ (2..=6 | 8), m @ (1..=2)))
+                if n == dig =>
+            {
+                State::Lower((n, m + 1))
+            }
             State::Lower((NULL, 0)) if dig == MODE => State::Upper((NULL, 0)),
 
             State::Upper((NULL, 0)) if (2..=9).contains(&dig) => State::Upper((dig, 1)),
-            State::Upper((n@(7|9), m@(1..=3))) |
-            State::Upper((n@(2..=6|8), m@(1..=2))) if n == dig => State::Upper((n, m+1)),
+            State::Upper((n @ (7 | 9), m @ (1..=3)))
+            | State::Upper((n @ (2..=6 | 8), m @ (1..=2)))
+                if n == dig =>
+            {
+                State::Upper((n, m + 1))
+            }
             State::Upper((NULL, 0)) if dig == MODE => State::Symbol((NULL, 0)),
 
             State::Symbol((NULL, 0)) if (2..=9).contains(&dig) => State::Symbol((dig, 1)),
@@ -77,7 +84,7 @@ impl State {
                 c.push(' ');
                 Self::default()
             }
-            State::Symbol((n@(2..=9), m@(1..=3))) if n == dig => State::Symbol((n, m+1)),
+            State::Symbol((n @ (2..=9), m @ (1..=3))) if n == dig => State::Symbol((n, m + 1)),
             State::Symbol((NULL, 0)) if dig == MODE => State::Number,
 
             State::Number if (0..=9).contains(&dig) => {
@@ -158,7 +165,10 @@ impl State {
     }
 }
 
-pub fn de_digs(mut goertzel_ch: mpsc::Receiver<u8>, mut notgoertzel_ch: broadcast::Receiver<u8>) -> mpsc::Receiver<u8> {
+pub fn de_digs(
+    mut goertzel_ch: mpsc::Receiver<u8>,
+    mut notgoertzel_ch: broadcast::Receiver<u8>,
+) -> mpsc::Receiver<u8> {
     let (goertz_send, digs_recv) = mpsc::channel(DIGS_CHANNEL_SIZE);
     let notgoertz_send = goertz_send.clone();
 
@@ -171,7 +181,9 @@ pub fn de_digs(mut goertzel_ch: mpsc::Receiver<u8>, mut notgoertzel_ch: broadcas
                     break;
                 },
             };
-            if let Err(_) = goertz_send.send(dig).await { break }
+            if let Err(_) = goertz_send.send(dig).await {
+                break;
+            }
         }
         Ok(())
     }));
@@ -185,7 +197,9 @@ pub fn de_digs(mut goertzel_ch: mpsc::Receiver<u8>, mut notgoertzel_ch: broadcas
                     break;
                 },
             };
-            if let Err(_) = notgoertz_send.send(dig).await { break }
+            if let Err(_) = notgoertz_send.send(dig).await {
+                break;
+            }
         }
         Ok(())
     }));
@@ -193,7 +207,10 @@ pub fn de_digs(mut goertzel_ch: mpsc::Receiver<u8>, mut notgoertzel_ch: broadcas
     digs_recv
 }
 
-pub fn ding(goertzel_ch: mpsc::Receiver<u8>, notgoertzel_ch: broadcast::Receiver<u8>) -> mpsc::Receiver<char> {
+pub fn ding(
+    goertzel_ch: mpsc::Receiver<u8>,
+    notgoertzel_ch: broadcast::Receiver<u8>,
+) -> mpsc::Receiver<char> {
     let (send_ch, rcv_ch) = mpsc::channel(CHARS_CHANNEL_SIZE);
     let mut digs_ch = de_digs(goertzel_ch, notgoertzel_ch);
 

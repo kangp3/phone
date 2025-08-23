@@ -7,7 +7,6 @@ use tracing::{debug, info};
 
 use crate::asyncutil::and_log_err;
 
-
 pub struct RingHandle {
     handle: AbortHandle,
 }
@@ -21,8 +20,9 @@ pub fn ring_phone() -> Result<RingHandle, Box<dyn Error>> {
             info!("No ring ring");
             sleep(Duration::from_secs(1)).await;
         }
-    })).abort_handle();
-    Ok(RingHandle{ handle })
+    }))
+    .abort_handle();
+    Ok(RingHandle { handle })
 }
 
 impl Drop for RingHandle {
