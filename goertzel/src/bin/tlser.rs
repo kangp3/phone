@@ -11,7 +11,7 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
 
     let mut dialog = Dialog::new(ip);
     let register_msg = dialog.new_request(rsip::Method::Register, vec![]);
-    tx_ch.send(rsip::SipMessage::Request(register_msg.clone())).await?;
+    tx_ch.send(register_msg.clone()).await?;
     println!("Wrote to stream: {:?}", register_msg);
 
     let response_msg = rx_ch.recv().await.ok_or("uh oh bad")?;

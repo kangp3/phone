@@ -585,7 +585,7 @@ impl Dialog {
         }
     }
 
-    pub fn new_request(&mut self, method: Method, body: Vec<u8>) -> Request {
+    pub fn new_request(&mut self, method: Method, body: Vec<u8>) -> SipMessage {
         self.cseq += 1;
         let branch: String = format!("{}{}", BRANCH_PREFIX, rand_chars(&mut self.rng, 32));
 
@@ -633,7 +633,7 @@ impl Dialog {
             params: vec![self.from_tag.clone().into()],
         }.into());
 
-        Request {
+        rsip::SipMessage::Request(Request {
             method,
             uri: Uri {
                 scheme: Some(Scheme::Sips),
@@ -643,6 +643,6 @@ impl Dialog {
             version: Version::V2,
             headers,
             body,
-        }
+        })
     }
 }
