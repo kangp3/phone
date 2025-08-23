@@ -35,13 +35,15 @@ const UA_VERSION: &str = "0.1.0";
 const BRANCH_PREFIX: &str = "z9hG4bK";
 const MAX_FORWARDS: u32 = 70;
 
-pub const USERNAME: LazyLock<String> = LazyLock::new(|| env::var("SIP_USERNAME").unwrap());
-const PASSWORD: LazyLock<String> = LazyLock::new(|| env::var("SIP_PASSWORD").unwrap());
+pub const SERVER_NAME: &str = "pbx.frandline.com";
+pub const SERVER_PORT: u16 = 5061;
+pub static USERNAME: LazyLock<String> = LazyLock::new(|| env::var("SIP_USERNAME").unwrap());
+static PASSWORD: LazyLock<String> = LazyLock::new(|| env::var("SIP_PASSWORD").unwrap());
 pub static SERVER_ADDR: LazyLock<SocketAddr> = LazyLock::new(
     || SocketAddr::from_str(&env::var("SIP_SERVER_ADDRESS").unwrap()).unwrap()
 );
 pub static FRANDLINE_PBX_ADDR: LazyLock<HostWithPort> = LazyLock::new(
-    || HostWithPort::try_from("pbx.frandline.com").unwrap()
+    || HostWithPort::try_from(SERVER_NAME).unwrap()
 );
 pub static CLIENT_ADDR: LazyLock<SocketAddr> = LazyLock::new(
     || SocketAddr::new(local_ip().unwrap(), 5060)

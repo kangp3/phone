@@ -671,6 +671,7 @@ dependencies = [
  "rustls",
  "sdp-rs",
  "tokio",
+ "tokio-rustls",
  "tracing",
  "tracing-subscriber",
  "vec1",
@@ -1928,6 +1929,16 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.87",
+]
+
+[[package]]
+name = "tokio-rustls"
+version = "0.26.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8e727b36a1a0e8b74c376ac2211e40c2c8af09fb4013c60d910495810f008e9b"
+dependencies = [
+ "rustls",
+ "tokio",
 ]
 
 [[package]]
