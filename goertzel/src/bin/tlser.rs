@@ -9,7 +9,7 @@ use rsip::{Header, Response};
 pub async fn main() -> Result<(), Box<dyn Error>> {
     let ip = public_ip::addr_v4().await.ok_or("no ip")?;
 
-    let mut tls_conn = tlssocket::bind(SERVER_NAME, SERVER_PORT).await?;
+    let mut tls_conn = tlssocket::TLSConn::new(SERVER_NAME, SERVER_PORT).await?;
 
     let mut dialog = Dialog::new(ip);
     let register_req = dialog.new_request(rsip::Method::Register, vec![]);
