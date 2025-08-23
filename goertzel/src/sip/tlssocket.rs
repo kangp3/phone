@@ -2,6 +2,7 @@ use std::error::Error;
 use std::sync::Arc;
 
 use rsip::SipMessage;
+use rustls::pki_types::ServerName;
 use rustls::RootCertStore;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::TcpStream;
@@ -10,15 +11,17 @@ use tokio_rustls::TlsConnector;
 
 use crate::asyncutil::and_log_err;
 
-use super::{SERVER_NAME, SERVER_PORT};
-
 const MESSAGE_CHANNEL_SIZE: usize = 64;
 
-pub async fn bind() -> Result<(mpsc::Receiver<SipMessage>, mpsc::Sender<SipMessage>), Box<dyn Error>>
-{
+pub async fn bind(
+    host: &str,
+    port: u16,
+) -> Result<(mpsc::Receiver<SipMessage>, mpsc::Sender<SipMessage>), Box<dyn Error>> {
     let connector = get_tls_connector();
-    let sock = TcpStream::connect((SERVER_NAME, SERVER_PORT)).await?;
-    let stream = connector.connect(SERVER_NAME.try_into()?, sock).await?;
+    let sock = TcpStream::connect((host, port)).await?;
+    let stream = connector
+        .connect(ServerName::try_from(host)?.to_owned(), sock)
+        .await?;
     let (recv_stream, mut send_stream) = tokio::io::split(stream);
 
     let (recv_send_ch, recv_recv_ch) = mpsc::channel(MESSAGE_CHANNEL_SIZE);

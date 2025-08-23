@@ -1,7 +1,7 @@
 use std::error::Error;
 
 use goertzel::get_header;
-use goertzel::sip::{add_auth_to_request, tlssocket, Dialog};
+use goertzel::sip::{add_auth_to_request, tlssocket, Dialog, SERVER_NAME, SERVER_PORT};
 use rsip::prelude::*;
 use rsip::{Header, Response};
 
@@ -9,7 +9,7 @@ use rsip::{Header, Response};
 pub async fn main() -> Result<(), Box<dyn Error>> {
     let ip = public_ip::addr_v4().await.ok_or("no ip")?;
 
-    let (mut rx_ch, tx_ch) = tlssocket::bind().await?;
+    let (mut rx_ch, tx_ch) = tlssocket::bind(SERVER_NAME, SERVER_PORT).await?;
 
     let mut dialog = Dialog::new(ip);
     let register_req = dialog.new_request(rsip::Method::Register, vec![]);
