@@ -23,7 +23,7 @@ pub async fn bind() -> Result<(mpsc::Receiver<SipMessage>, mpsc::Sender<SipMessa
     let (recv_send_ch, recv_recv_ch) = mpsc::channel(MESSAGE_CHANNEL_SIZE);
     tokio::spawn(and_log_err("tls sip recv", async move {
         let mut lines = BufReader::new(recv_stream).lines();
-        let mut msg_str = String::from("");
+        let mut msg_str = String::new();
         while let Some(line) = lines.next_line().await? {
             msg_str.push_str(&line);
             msg_str.push_str("\r\n");

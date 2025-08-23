@@ -394,7 +394,7 @@ impl Txn {
 
     pub fn add_auth_to_request(&self, req: &mut Request, opaque: Option<String>, nonce: String) {
         let cnonce = format!("{}/{}", ms_since_epoch(), rand_chars(&mut rng(), 16));
-        // TOOD(peter): Actually track this?
+        // TODO(peter): Actually track this?
         let nc = 1;
 
         let ha1 = md5(format!("{}:{}:{}", *USERNAME, REALM, *PASSWORD));
@@ -550,6 +550,43 @@ impl Txn {
 //    }
 //}
 
+#[macro_export]
+macro_rules! get_header {
+    ($headers:expr, $header_variant:path) => {{
+        $headers
+            .iter()
+            .find_map(|h| if let $header_variant(v) = h { Some(v) } else { None })
+            .ok_or("header not found")?
+            .typed()?
+    }};
+}
+
+pub fn add_auth_to_request(req: &mut Request, opaque: Option<String>, nonce: String) {
+    let cnonce = format!("{}/{}", ms_since_epoch(), rand_chars(&mut rng(), 16));
+    // TODO(peter): Actually track this?
+    let nc = 1;
+
+    let ha1 = md5(format!("{}:{}:{}", *USERNAME, REALM, *PASSWORD));
+    let ha2 = md5(format!("{}:{}:{}", req.method, req.uri.scheme.as_ref().unwrap_or(&Scheme::Sips), (*FRANDLINE_PBX_ADDR)));
+    let response = md5(format!("{}:{}:{:08x}:{}:auth:{}", ha1, nonce, nc, cnonce, ha2));
+
+    req.headers.push(Authorization{
+        scheme: auth::Scheme::Digest,
+        username: (*USERNAME).clone(),
+        realm: REALM.into(),
+        nonce,
+        uri: Uri {
+            scheme: Some(Scheme::Sips),
+            host_with_port: (*FRANDLINE_PBX_ADDR).clone(),
+            ..Default::default()
+        },
+        response,
+        algorithm: Some(Algorithm::Md5),
+        opaque,
+        qop: Some(AuthQop::Auth { cnonce, nc }),
+    }.into());
+    req.headers.push(Expires::from(3600).into());
+}
 
 #[derive(Clone)]
 pub struct Dialog {
@@ -585,7 +622,7 @@ impl Dialog {
         }
     }
 
-    pub fn new_request(&mut self, method: Method, body: Vec<u8>) -> SipMessage {
+    pub fn new_request(&mut self, method: Method, body: Vec<u8>) -> Request {
         self.cseq += 1;
         let branch: String = format!("{}{}", BRANCH_PREFIX, rand_chars(&mut self.rng, 32));
 
@@ -633,7 +670,7 @@ impl Dialog {
             params: vec![self.from_tag.clone().into()],
         }.into());
 
-        rsip::SipMessage::Request(Request {
+        Request {
             method,
             uri: Uri {
                 scheme: Some(Scheme::Sips),
@@ -643,6 +680,6 @@ impl Dialog {
             version: Version::V2,
             headers,
             body,
-        })
+        }
     }
 }
