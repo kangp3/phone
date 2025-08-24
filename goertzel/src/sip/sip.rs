@@ -612,23 +612,6 @@ impl Txn {
 //    }
 //}
 
-#[macro_export]
-macro_rules! get_header {
-    ($headers:expr, $header_variant:path) => {{
-        $headers
-            .iter()
-            .find_map(|h| {
-                if let $header_variant(v) = h {
-                    Some(v)
-                } else {
-                    None
-                }
-            })
-            .ok_or("header not found")?
-            .typed()?
-    }};
-}
-
 pub fn add_auth_to_request(req: &mut Request, opaque: Option<String>, nonce: String) {
     let cnonce = format!("{}/{}", ms_since_epoch(), rand_chars(&mut rng(), 16));
     // TODO(peter): Actually track this?
@@ -667,12 +650,15 @@ pub fn add_auth_to_request(req: &mut Request, opaque: Option<String>, nonce: Str
     req.headers.push(Expires::from(3600).into());
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Dialog {
+    pub tx_ch: mpsc::Sender<SipMessage>,
+    pub rx_ch: broadcast::Sender<SipMessage>,
+
     ip: Ipv4Addr,
 
     cseq: u32,
-    call_id: CallId,
+    pub call_id: CallId,
 
     from_tag: Tag,
     to_tag: Option<Tag>,
@@ -681,7 +667,11 @@ pub struct Dialog {
 }
 
 impl Dialog {
-    pub fn new(client_ip: Ipv4Addr) -> Self {
+    pub fn new(
+        client_ip: Ipv4Addr,
+        tx_ch: mpsc::Sender<SipMessage>,
+        rx_ch: broadcast::Sender<SipMessage>,
+    ) -> Self {
         let mut rng = StdRng::from_rng(&mut rand::rng());
         let call_id = CallId::from(format!("{}/{}", ms_since_epoch(), rand_chars(&mut rng, 16)));
 
@@ -689,6 +679,9 @@ impl Dialog {
         let to_tag = None;
 
         Dialog {
+            tx_ch,
+            rx_ch,
+
             ip: client_ip,
 
             cseq: 0,
@@ -699,6 +692,34 @@ impl Dialog {
 
             rng,
         }
+    }
+
+    pub fn from_request(
+        ip: Ipv4Addr,
+        tx_ch: mpsc::Sender<SipMessage>,
+        rx_ch: broadcast::Sender<SipMessage>,
+        msg: &SipMessage,
+    ) -> Result<Self, Box<dyn Error>> {
+        let call_id = msg.call_id_header()?.clone();
+        let cseq = msg.cseq_header()?.seq()?;
+        let from_tag = msg.from_header()?.tag()?.ok_or("missing from tag")?;
+        let to_tag = msg.to_header()?.tag()?.ok_or("missing to tag")?;
+
+        Ok(Dialog {
+            tx_ch,
+            rx_ch,
+
+            ip,
+
+            cseq,
+            call_id,
+
+            // Invert these because the request should be coming from the server
+            from_tag: to_tag,
+            to_tag: Some(from_tag),
+
+            rng: StdRng::from_rng(&mut rand::rng()),
+        })
     }
 
     pub fn new_request(&mut self, method: Method, body: Vec<u8>) -> Request {
