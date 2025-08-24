@@ -17,8 +17,8 @@ use rand::{rng, Rng};
 use rsip::headers::auth::{Algorithm, AuthQop};
 use rsip::headers::{self, auth, CallId, ContentLength, Expires, MaxForwards, UserAgent};
 use rsip::param::{OtherParam, Tag};
-use rsip::prelude::*;
 use rsip::typed::{Allow, Authorization, CSeq, Contact, ContentType, From, MediaType, To, Via};
+use rsip::{prelude::*, StatusCodeKind};
 use rsip::{
     Auth, Header, Headers, HostWithPort, Method, Param, Request, Response, Scheme, SipMessage,
     StatusCode, Transport, Uri, Version,
@@ -613,6 +613,13 @@ impl Txn {
 //    }
 //}
 
+pub fn assert_resp_successful(resp: &Response) -> Result<(), Box<dyn Error>> {
+    match resp.status_code.kind() {
+        StatusCodeKind::Successful => Ok(()),
+        _ => Err(format!("unsuccessful resp {}", resp.status_code).into()),
+    }
+}
+
 pub fn add_auth_to_request(req: &mut Request, opaque: Option<String>, nonce: String) {
     let cnonce = format!("{}/{}", ms_since_epoch(), rand_chars(&mut rng(), 16));
     // TODO(peter): Actually track this?
@@ -815,5 +822,25 @@ impl Dialog {
         let msg = self.rx_ch.subscribe().recv().await?;
         debug!(call_id=%self.call_id.value().to_string(), msg=%msg.clone().to_string().lines().next().unwrap_or("empty"), "SIP Recv");
         Ok(msg)
+    }
+
+    pub async fn register(&mut self) -> Result<(), Box<dyn Error>> {
+        let req = self.new_request(rsip::Method::Register, vec![]);
+        self.send(req.clone()).await?;
+
+        let resp: Response = self.recv().await?.try_into()?;
+        let www_auth = resp
+            .www_authenticate_header()
+            .ok_or("missing www auth header")?
+            .typed()?;
+
+        let mut authed_req = self.new_request(rsip::Method::Register, vec![]);
+        add_auth_to_request(&mut authed_req, www_auth.opaque, www_auth.nonce);
+        self.send(authed_req.clone()).await?;
+
+        let resp: Response = self.recv().await?.try_into()?;
+        assert_resp_successful(&resp)?;
+
+        Ok(())
     }
 }

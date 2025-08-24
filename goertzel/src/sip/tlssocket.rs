@@ -65,6 +65,8 @@ impl TlsSipConn {
                 msg_str.push_str(&line);
                 msg_str.push_str("\r\n");
                 if line.is_empty() {
+                    // TODO: Just emit the message and build a layer that
+                    // consumes SIP messages and routes them to dialogs
                     let msg = SipMessage::try_from(msg_str.clone())?;
                     let call_id = msg.call_id_header()?.value().to_string();
 
