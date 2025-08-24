@@ -807,13 +807,13 @@ impl Dialog {
         &self,
         msg: (impl Into<SipMessage> + Clone),
     ) -> Result<(), mpsc::error::SendError<SipMessage>> {
-        debug!(call_id=%self.call_id.value().to_string(), msg=%msg.clone().into().to_string().lines().next().unwrap_or("empty"), "CALL SEND");
+        debug!(call_id=%self.call_id.value().to_string(), msg=%msg.clone().into().to_string().lines().next().unwrap_or("empty"), "SIP Send");
         self.tx_ch.send((msg).into()).await
     }
 
     pub async fn recv(&self) -> Result<SipMessage, broadcast::error::RecvError> {
         let msg = self.rx_ch.subscribe().recv().await?;
-        debug!(call_id=%self.call_id.value().to_string(), msg=%msg.clone().to_string().lines().next().unwrap_or("empty"), "CALL RECV");
+        debug!(call_id=%self.call_id.value().to_string(), msg=%msg.clone().to_string().lines().next().unwrap_or("empty"), "SIP Recv");
         Ok(msg)
     }
 }
