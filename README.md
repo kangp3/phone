@@ -108,6 +108,12 @@ make &&
 make install
 ```
 
+### Update users
+Edit pjsip.conf on the remote
+```
+asterisk -x 'module reload'
+```
+
 ### Certbot
 ```
 sudo apt-get update

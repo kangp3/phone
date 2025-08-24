@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::error::Error;
 use std::net::Ipv4Addr;
 use std::sync::Arc;
+use std::time::Duration;
 
 use rsip::prelude::{HeadersExt, UntypedHeader};
 use rsip::{HostWithPort, SipMessage};
@@ -11,7 +12,8 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::TcpStream;
 use tokio::sync::{broadcast, mpsc, RwLock};
 use tokio_rustls::TlsConnector;
-use tracing::warn;
+use tracing::{debug, warn};
+use uuid::Uuid;
 
 use crate::asyncutil::and_log_err;
 
@@ -21,6 +23,7 @@ const MESSAGE_CHANNEL_SIZE: usize = 64;
 
 pub struct TlsSipConn {
     client_ip: Ipv4Addr,
+    sip_instance_uuid: Uuid,
 
     pub host: String,
     pub port: u16,
@@ -33,6 +36,8 @@ pub struct TlsSipConn {
 
 impl TlsSipConn {
     pub async fn new(client_ip: Ipv4Addr, host: &str, port: u16) -> Result<Self, Box<dyn Error>> {
+        let sip_instance_uuid = Uuid::new_v4();
+
         let dialogs = Arc::new(RwLock::new(HashMap::<String, Dialog>::new()));
 
         let (send_send_ch, mut send_recv_ch) = mpsc::channel(MESSAGE_CHANNEL_SIZE);
@@ -40,6 +45,8 @@ impl TlsSipConn {
 
         let conn = TlsSipConn {
             client_ip,
+            sip_instance_uuid: sip_instance_uuid.clone(),
+
             host: String::from(host),
             port,
 
@@ -78,10 +85,16 @@ impl TlsSipConn {
                         if let Some(dialog) = dialogs_handle.get(&call_id) {
                             (*dialog).rx_ch.clone()
                         } else {
+                            debug!(
+                                call_id=%call_id,
+                                msg=%msg.clone().to_string().lines().next().unwrap_or("empty"),
+                                "SIP New Dialog",
+                            );
                             let (rx_send_ch, _) = broadcast::channel(MESSAGE_CHANNEL_SIZE);
                             let new_dialog = Dialog::from_request(
                                 host_with_port.clone(),
                                 client_ip.clone(),
+                                sip_instance_uuid,
                                 tx_ch.clone(),
                                 rx_send_ch.clone(),
                                 &msg,
@@ -129,6 +142,7 @@ impl TlsSipConn {
         let dialog = Dialog::new(
             host_with_port,
             self.client_ip,
+            self.sip_instance_uuid,
             username,
             self.tx_ch.clone(),
             rx_send_ch,

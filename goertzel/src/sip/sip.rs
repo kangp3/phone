@@ -26,6 +26,7 @@ use rsip::{
 use sdp_rs::{MediaDescription, SessionDescription};
 use tokio::sync::{broadcast, mpsc, RwLock, RwLockWriteGuard};
 use tracing::debug;
+use uuid::Uuid;
 use vec1::Vec1;
 
 const MESSAGE_CHANNEL_SIZE: usize = 64;
@@ -616,6 +617,7 @@ pub struct Dialog {
 
     server_host: HostWithPort,
     client_ip: Ipv4Addr,
+    sip_instance_uuid: Uuid,
 
     username: String,
 
@@ -632,6 +634,7 @@ impl Dialog {
     pub fn new(
         server_host: HostWithPort,
         client_ip: Ipv4Addr,
+        sip_instance_uuid: Uuid,
         username: String,
         tx_ch: mpsc::Sender<SipMessage>,
         rx_ch: broadcast::Sender<SipMessage>,
@@ -648,6 +651,7 @@ impl Dialog {
 
             server_host,
             client_ip,
+            sip_instance_uuid,
 
             username,
 
@@ -664,16 +668,22 @@ impl Dialog {
     pub fn from_request(
         server_host: HostWithPort,
         client_ip: Ipv4Addr,
+        sip_instance_uuid: Uuid,
         tx_ch: mpsc::Sender<SipMessage>,
         rx_ch: broadcast::Sender<SipMessage>,
         msg: &SipMessage,
     ) -> Result<Self, Box<dyn Error>> {
+        let mut rng = StdRng::from_rng(&mut rand::rng());
+
         let call_id = msg.call_id_header()?.clone();
         let cseq = msg.cseq_header()?.seq()?;
         let from_tag = msg.from_header()?.tag()?.ok_or("missing from tag")?;
         let to_header = msg.to_header()?.typed()?;
         let username = to_header.uri.user().ok_or("missing to user")?.to_string();
-        let to_tag = to_header.tag().ok_or("missing to tag")?.to_owned();
+        let to_tag = to_header
+            .tag()
+            .unwrap_or(&rand_chars(&mut rng, 16).into())
+            .to_owned();
 
         Ok(Dialog {
             tx_ch,
@@ -681,22 +691,22 @@ impl Dialog {
 
             server_host,
             client_ip,
+            sip_instance_uuid,
 
             username,
 
             cseq,
             call_id,
 
-            // TODO: Do we need to invert these because the request should be coming from the server?
             from_tag: from_tag,
             to_tag: Some(to_tag),
 
-            rng: StdRng::from_rng(&mut rand::rng()),
+            rng,
         })
     }
 
     pub async fn register(&mut self, password: String) -> Result<(), Box<dyn Error>> {
-        let req = self.new_request(rsip::Method::Register, vec![]);
+        let req = self.new_request_from_to(rsip::Method::Register, self.uri(), self.uri(), vec![]);
         self.send(req.clone()).await?;
 
         let resp: Response = self.recv().await?.try_into()?;
@@ -705,7 +715,8 @@ impl Dialog {
             .ok_or("missing www auth header")?
             .typed()?;
 
-        let mut authed_req = self.new_request(rsip::Method::Register, vec![]);
+        let mut authed_req =
+            self.new_request_from_to(rsip::Method::Register, self.uri(), self.uri(), vec![]);
         self.add_auth_to_request(&mut authed_req, password, www_auth.opaque, www_auth.nonce);
         self.send(authed_req.clone()).await?;
 
@@ -715,25 +726,88 @@ impl Dialog {
         Ok(())
     }
 
+    pub fn sdp(&self, sess_id: String) -> SessionDescription {
+        SessionDescription {
+            version: sdp_rs::lines::Version::V0,
+            origin: sdp_rs::lines::Origin {
+                username: "-".to_string(),
+                sess_id: sess_id.clone(),
+                sess_version: sess_id,
+                nettype: sdp_rs::lines::common::Nettype::In,
+                addrtype: sdp_rs::lines::common::Addrtype::Ip4,
+                unicast_address: self.client_ip.into(),
+            },
+            session_name: sdp_rs::lines::SessionName::from(USER_AGENT.to_string()),
+            session_info: None,
+            uri: None,
+            emails: vec![],
+            phones: vec![],
+            connection: Some(sdp_rs::lines::Connection {
+                nettype: sdp_rs::lines::common::Nettype::In,
+                addrtype: sdp_rs::lines::common::Addrtype::Ip4,
+                connection_address: IpAddr::V4(self.client_ip).into(),
+            }),
+            bandwidths: vec![],
+            times: Vec1::new(sdp_rs::Time {
+                active: sdp_rs::lines::Active { start: 0, stop: 0 },
+                repeat: vec![],
+                zone: None,
+            }),
+            key: None,
+            attributes: vec![],
+            media_descriptions: vec![MediaDescription {
+                media: sdp_rs::lines::Media {
+                    media: sdp_rs::lines::media::MediaType::Audio,
+                    port: 19512, // TODO(peter): Choose and set up an RTP port
+                    num_of_ports: None,
+                    proto: sdp_rs::lines::media::ProtoType::RtpAvp,
+                    fmt: vec![0].into_iter().map(|v| v.to_string()).join(" "),
+                },
+                info: None,
+                connections: vec![],
+                bandwidths: vec![],
+                key: None,
+                attributes: vec![
+                    sdp_rs::lines::Attribute::Rtpmap(sdp_rs::lines::attribute::Rtpmap {
+                        payload_type: 0,
+                        encoding_name: "PCMU".into(),
+                        clock_rate: 8000,
+                        encoding_params: None,
+                    }),
+                    sdp_rs::lines::Attribute::Ptime(20.0),
+                    sdp_rs::lines::Attribute::Maxptime(140.0),
+                    sdp_rs::lines::Attribute::Sendrecv,
+                ],
+            }],
+        }
+    }
+
     pub async fn send(
         &self,
         msg: (impl Into<SipMessage> + Clone),
     ) -> Result<(), mpsc::error::SendError<SipMessage>> {
-        debug!(call_id=%self.call_id.value().to_string(), msg=%msg.clone().into().to_string().lines().next().unwrap_or("empty"), "SIP Send");
+        debug!(
+            user=%self.username,
+            call_id=%self.call_id.value().to_string(),
+            msg=%msg.clone().into().to_string().lines().next().unwrap_or("empty"),
+            "SIP Send",
+        );
         self.tx_ch.send((msg).into()).await
     }
 
     pub async fn recv(&self) -> Result<SipMessage, broadcast::error::RecvError> {
         let msg = self.rx_ch.subscribe().recv().await?;
-        debug!(call_id=%self.call_id.value().to_string(), msg=%msg.clone().to_string().lines().next().unwrap_or("empty"), "SIP Recv");
+        debug!(
+            user=%self.username,
+            call_id=%self.call_id.value().to_string(),
+            msg=%msg.clone().to_string().lines().next().unwrap_or("empty"),
+            "SIP Recv",
+        );
         Ok(msg)
     }
 
-    pub fn new_request(&mut self, method: Method, body: Vec<u8>) -> Request {
-        self.cseq += 1;
-        let branch: String = format!("{}{}", BRANCH_PREFIX, rand_chars(&mut self.rng, 32));
-
-        let sips_uri = Uri {
+    fn uri(&self) -> Uri {
+        Uri {
             scheme: Some(Scheme::Sips),
             auth: Some(Auth {
                 user: self.username.clone(),
@@ -741,7 +815,12 @@ impl Dialog {
             }),
             host_with_port: self.server_host.clone(),
             ..Default::default()
-        };
+        }
+    }
+
+    pub fn new_request(&mut self, method: Method, body: Vec<u8>) -> Request {
+        self.cseq += 1;
+        let branch: String = format!("{}{}", BRANCH_PREFIX, rand_chars(&mut self.rng, 32));
 
         let mut headers: Headers = Default::default();
         headers.push(
@@ -773,38 +852,30 @@ impl Dialog {
                 display_name: Some(self.username.clone()),
                 uri: Uri {
                     scheme: Some(Scheme::Sips),
-                    host_with_port: IpAddr::V4(self.client_ip).into(),
+                    host_with_port: self.server_host.clone(),
                     auth: Some(Auth {
                         user: self.username.clone(),
                         password: None,
                     }),
+                    params: vec![
+                        Param::Transport(Transport::Tls),
+                        Param::Other("ob".into(), None),
+                    ],
                     ..Default::default()
                 },
-                params: vec![Param::Q("1".into())],
+                params: vec![
+                    Param::Q("1".into()),
+                    Param::Other(
+                        "+sip.instance".into(),
+                        Some(format!("\"<urn:uuid:{}>\"", self.sip_instance_uuid).into()),
+                    ),
+                    Param::Other("reg-id".into(), Some("1".into())),
+                ],
             }
             .into(),
         );
         headers.push(MaxForwards::from(MAX_FORWARDS).into());
         headers.push(ContentLength::from(body.len() as u32).into());
-
-        // TODO: Move these somewhere else
-        headers.push(
-            From {
-                display_name: Some(self.username.clone()),
-                uri: sips_uri.clone(),
-                params: vec![self.from_tag.clone().into()],
-            }
-            .into(),
-        );
-        headers.push(
-            To {
-                display_name: Some(self.username.clone()),
-                uri: sips_uri.clone(),
-                // TODO: Use the to_tag here and generate it
-                params: vec![self.from_tag.clone().into()],
-            }
-            .into(),
-        );
 
         Request {
             method,
@@ -817,6 +888,37 @@ impl Dialog {
             headers,
             body,
         }
+    }
+
+    pub fn new_request_from_to(
+        &mut self,
+        method: Method,
+        from: Uri,
+        to: Uri,
+        body: Vec<u8>,
+    ) -> Request {
+        let mut req = self.new_request(method, body);
+        req.headers.push(
+            From {
+                display_name: None,
+                uri: from,
+                params: vec![self.from_tag.clone().into()],
+            }
+            .into(),
+        );
+        req.headers.push(
+            To {
+                display_name: None,
+                uri: to,
+                params: vec![self.to_tag.clone()]
+                    .into_iter()
+                    .filter_map(|t| t.map(|t| Param::Tag(t)))
+                    .collect(),
+            }
+            .into(),
+        );
+
+        req
     }
 
     pub fn add_auth_to_request(
@@ -861,5 +963,31 @@ impl Dialog {
             .into(),
         );
         req.headers.push(Expires::from(3600).into());
+    }
+
+    pub async fn invite(&mut self, password: String, to: Uri) -> Result<(), Box<dyn Error>> {
+        let sess_id = micros_since_epoch().to_string();
+        let body = self.sdp(sess_id).to_string();
+        let mut req =
+            self.new_request_from_to(Method::Invite, self.uri(), to.clone(), body.clone().into());
+        req.uri = to.clone();
+        req.headers.push(ContentType(MediaType::Sdp(vec![])).into());
+        self.send(req).await?;
+
+        let resp: Response = self.recv().await?.try_into()?;
+        let www_auth = resp
+            .www_authenticate_header()
+            .ok_or("missing www auth header")?
+            .typed()?;
+
+        let mut req = self.new_request_from_to(Method::Invite, self.uri(), to.clone(), body.into());
+        req.uri = to;
+        req.headers.push(ContentType(MediaType::Sdp(vec![])).into());
+        self.add_auth_to_request(&mut req, password, www_auth.opaque, www_auth.nonce);
+        self.send(req).await?;
+
+        self.recv().await?;
+
+        Ok(())
     }
 }
