@@ -4,7 +4,7 @@ use std::net::Ipv4Addr;
 use std::sync::Arc;
 
 use rsip::prelude::{HeadersExt, UntypedHeader};
-use rsip::SipMessage;
+use rsip::{HostWithPort, SipMessage};
 use rustls::pki_types::ServerName;
 use rustls::RootCertStore;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
@@ -21,6 +21,7 @@ const MESSAGE_CHANNEL_SIZE: usize = 64;
 
 pub struct TlsSipConn {
     client_ip: Ipv4Addr,
+
     pub host: String,
     pub port: u16,
 
@@ -56,6 +57,7 @@ impl TlsSipConn {
         let (recv_stream, mut send_stream) = tokio::io::split(stream);
 
         // TODO: Drop handlers for these coroutines
+        let host_with_port = HostWithPort::from((host, port));
         let dialogs_ref = dialogs.clone();
         let tx_ch = send_send_ch.clone();
         let dialog_send_ch = dialog_send_ch.clone();
@@ -78,6 +80,7 @@ impl TlsSipConn {
                         } else {
                             let (rx_send_ch, _) = broadcast::channel(MESSAGE_CHANNEL_SIZE);
                             let new_dialog = Dialog::from_request(
+                                host_with_port.clone(),
                                 client_ip.clone(),
                                 tx_ch.clone(),
                                 rx_send_ch.clone(),
@@ -120,8 +123,16 @@ impl TlsSipConn {
     }
 
     pub async fn dialog(&self, username: String) -> Dialog {
+        let host_with_port = HostWithPort::from((self.host.clone(), self.port));
+
         let (rx_send_ch, _) = broadcast::channel(MESSAGE_CHANNEL_SIZE);
-        let dialog = Dialog::new(self.client_ip, username, self.tx_ch.clone(), rx_send_ch);
+        let dialog = Dialog::new(
+            host_with_port,
+            self.client_ip,
+            username,
+            self.tx_ch.clone(),
+            rx_send_ch,
+        );
         {
             let mut dialogs_handle = self.dialogs.write().await;
             dialogs_handle.insert(dialog.call_id.value().to_string(), dialog.to_owned());

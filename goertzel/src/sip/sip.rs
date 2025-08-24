@@ -44,8 +44,6 @@ pub static USERNAME: LazyLock<String> = LazyLock::new(|| env::var("SIP_USERNAME"
 static PASSWORD: LazyLock<String> = LazyLock::new(|| env::var("SIP_PASSWORD").unwrap());
 pub static SERVER_ADDR: LazyLock<SocketAddr> =
     LazyLock::new(|| SocketAddr::from_str(&env::var("SIP_SERVER_ADDRESS").unwrap()).unwrap());
-pub static FRANDLINE_PBX_ADDR: LazyLock<HostWithPort> =
-    LazyLock::new(|| HostWithPort::try_from(SERVER_NAME).unwrap());
 pub static CLIENT_ADDR: LazyLock<SocketAddr> =
     LazyLock::new(|| SocketAddr::new(local_ip().unwrap(), 5060));
 pub static MY_URI: LazyLock<Uri> = LazyLock::new(|| Uri {
@@ -616,7 +614,9 @@ pub struct Dialog {
     pub tx_ch: mpsc::Sender<SipMessage>,
     pub rx_ch: broadcast::Sender<SipMessage>,
 
-    ip: Ipv4Addr,
+    server_host: HostWithPort,
+    client_ip: Ipv4Addr,
+
     username: String,
 
     cseq: u32,
@@ -630,6 +630,7 @@ pub struct Dialog {
 
 impl Dialog {
     pub fn new(
+        server_host: HostWithPort,
         client_ip: Ipv4Addr,
         username: String,
         tx_ch: mpsc::Sender<SipMessage>,
@@ -645,7 +646,9 @@ impl Dialog {
             tx_ch,
             rx_ch,
 
-            ip: client_ip,
+            server_host,
+            client_ip,
+
             username,
 
             cseq: 0,
@@ -659,7 +662,8 @@ impl Dialog {
     }
 
     pub fn from_request(
-        ip: Ipv4Addr,
+        server_host: HostWithPort,
+        client_ip: Ipv4Addr,
         tx_ch: mpsc::Sender<SipMessage>,
         rx_ch: broadcast::Sender<SipMessage>,
         msg: &SipMessage,
@@ -675,7 +679,9 @@ impl Dialog {
             tx_ch,
             rx_ch,
 
-            ip,
+            server_host,
+            client_ip,
+
             username,
 
             cseq,
@@ -733,7 +739,7 @@ impl Dialog {
                 user: self.username.clone(),
                 password: None,
             }),
-            host_with_port: (*FRANDLINE_PBX_ADDR).clone(),
+            host_with_port: self.server_host.clone(),
             ..Default::default()
         };
 
@@ -750,7 +756,7 @@ impl Dialog {
                 version: Version::V2,
                 transport: Transport::Tls,
                 uri: Uri {
-                    host_with_port: (*FRANDLINE_PBX_ADDR).clone(),
+                    host_with_port: self.server_host.clone(),
                     ..Default::default()
                 },
                 params: vec![
@@ -767,7 +773,7 @@ impl Dialog {
                 display_name: Some(self.username.clone()),
                 uri: Uri {
                     scheme: Some(Scheme::Sips),
-                    host_with_port: IpAddr::V4(self.ip).into(),
+                    host_with_port: IpAddr::V4(self.client_ip).into(),
                     auth: Some(Auth {
                         user: self.username.clone(),
                         password: None,
@@ -804,7 +810,7 @@ impl Dialog {
             method,
             uri: Uri {
                 scheme: Some(Scheme::Sips),
-                host_with_port: (*FRANDLINE_PBX_ADDR).clone(),
+                host_with_port: self.server_host.clone(),
                 ..Default::default()
             },
             version: Version::V2,
@@ -829,7 +835,7 @@ impl Dialog {
             "{}:{}:{}",
             req.method,
             req.uri.scheme.as_ref().unwrap_or(&Scheme::Sips),
-            (*FRANDLINE_PBX_ADDR)
+            self.server_host,
         ));
         let response = md5(format!(
             "{}:{}:{:08x}:{}:auth:{}",
@@ -844,7 +850,7 @@ impl Dialog {
                 nonce,
                 uri: Uri {
                     scheme: Some(Scheme::Sips),
-                    host_with_port: (*FRANDLINE_PBX_ADDR).clone(),
+                    host_with_port: self.server_host.clone(),
                     ..Default::default()
                 },
                 response,
