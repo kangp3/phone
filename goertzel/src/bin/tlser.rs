@@ -11,10 +11,10 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
 
     let mut dialog = tls_conn.dialog().await;
     let register_req = dialog.new_request(rsip::Method::Register, vec![]);
-    dialog.tx_ch.send(register_req.clone().into()).await?;
+    dialog.send(register_req.clone()).await?;
     println!("Wrote to stream: {:?}", register_req);
 
-    let response_msg = dialog.rx_ch.subscribe().recv().await?;
+    let response_msg = dialog.recv().await?;
     println!("Response msg is: {:?}", response_msg);
 
     let www_auth = response_msg
@@ -23,13 +23,10 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
         .typed()?;
     let mut authed_register_req = dialog.new_request(rsip::Method::Register, vec![]);
     add_auth_to_request(&mut authed_register_req, www_auth.opaque, www_auth.nonce);
-    dialog
-        .tx_ch
-        .send(authed_register_req.clone().into())
-        .await?;
+    dialog.send(authed_register_req.clone()).await?;
     println!("Wrote to stream: {:?}", authed_register_req);
 
-    let response_msg = dialog.rx_ch.subscribe().recv().await?;
+    let response_msg = dialog.recv().await?;
     println!("Response msg is: {:?}", response_msg);
 
     Ok(())

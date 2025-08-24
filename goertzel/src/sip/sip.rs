@@ -783,6 +783,7 @@ impl Dialog {
             To {
                 display_name: Some("1103".to_string()),
                 uri: (*SIPS_URI).clone(),
+                // TODO: Should we use the to_tag here and generate it?
                 params: vec![self.from_tag.clone().into()],
             }
             .into(),
@@ -799,5 +800,16 @@ impl Dialog {
             headers,
             body,
         }
+    }
+
+    pub async fn send(
+        &self,
+        msg: impl Into<SipMessage>,
+    ) -> Result<(), mpsc::error::SendError<SipMessage>> {
+        self.tx_ch.send(msg.into()).await
+    }
+
+    pub async fn recv(&self) -> Result<SipMessage, broadcast::error::RecvError> {
+        self.rx_ch.subscribe().recv().await
     }
 }
