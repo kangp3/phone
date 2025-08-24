@@ -3,7 +3,7 @@ use std::error::Error;
 use std::net::Ipv4Addr;
 use std::sync::Arc;
 
-use rsip::prelude::HeadersExt;
+use rsip::prelude::{HeadersExt, UntypedHeader};
 use rsip::SipMessage;
 use rustls::pki_types::ServerName;
 use rustls::RootCertStore;
@@ -65,7 +65,7 @@ impl TlsSipConn {
                 msg_str.push_str("\r\n");
                 if line.is_empty() {
                     let msg = SipMessage::try_from(msg_str.clone())?;
-                    let call_id = msg.call_id_header()?.to_string();
+                    let call_id = msg.call_id_header()?.value().to_string();
 
                     let rx_send_ch = {
                         let mut dialogs_handle = dialogs_ref.write().await;
@@ -79,7 +79,7 @@ impl TlsSipConn {
                                 rx_send_ch.clone(),
                                 &msg,
                             )?;
-                            dialogs_handle.insert(call_id.to_string(), new_dialog.to_owned());
+                            dialogs_handle.insert(call_id, new_dialog.to_owned());
                             dialog_send_ch.send(new_dialog)?;
                             rx_send_ch
                         }
@@ -97,7 +97,7 @@ impl TlsSipConn {
             loop {
                 match send_recv_ch.recv().await {
                     Some(msg) => {
-                        let call_id = msg.call_id_header()?.to_string();
+                        let call_id = msg.call_id_header()?.value().to_string();
 
                         {
                             let mut dialogs_handle = dialogs.write().await;
@@ -105,7 +105,7 @@ impl TlsSipConn {
                                 let (rx_send_ch, _) = broadcast::channel(MESSAGE_CHANNEL_SIZE);
                                 let new_dialog =
                                     Dialog::new(client_ip.clone(), tx_ch.clone(), rx_send_ch);
-                                dialogs_handle.insert(call_id.to_string(), new_dialog.to_owned());
+                                dialogs_handle.insert(call_id, new_dialog.to_owned());
                             }
                         }
 
@@ -124,7 +124,7 @@ impl TlsSipConn {
         let dialog = Dialog::new(self.client_ip, self.tx_ch.clone(), rx_send_ch);
         {
             let mut dialogs_handle = self.dialogs.write().await;
-            dialogs_handle.insert(dialog.call_id.to_string(), dialog.to_owned());
+            dialogs_handle.insert(dialog.call_id.value().to_string(), dialog.to_owned());
         }
         dialog
     }

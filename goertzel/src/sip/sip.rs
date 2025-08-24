@@ -714,9 +714,9 @@ impl Dialog {
             cseq,
             call_id,
 
-            // Invert these because the request should be coming from the server
-            from_tag: to_tag,
-            to_tag: Some(from_tag),
+            // TODO: Do we need to invert these because the request should be coming from the server?
+            from_tag: from_tag,
+            to_tag: Some(to_tag),
 
             rng: StdRng::from_rng(&mut rand::rng()),
         })
