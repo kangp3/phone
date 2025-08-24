@@ -11,6 +11,7 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::TcpStream;
 use tokio::sync::{broadcast, mpsc, RwLock};
 use tokio_rustls::TlsConnector;
+use tracing::warn;
 
 use crate::asyncutil::and_log_err;
 
@@ -95,7 +96,6 @@ impl TlsSipConn {
             Err("broke out of the lines loop".into()) // TODO: Maybe retry on this error
         }));
 
-        let tx_ch = send_send_ch.clone();
         tokio::spawn(and_log_err("tls sip send", async move {
             loop {
                 match send_recv_ch.recv().await {
@@ -103,12 +103,9 @@ impl TlsSipConn {
                         let call_id = msg.call_id_header()?.value().to_string();
 
                         {
-                            let mut dialogs_handle = dialogs.write().await;
+                            let dialogs_handle = dialogs.read().await;
                             if !dialogs_handle.contains_key(&call_id) {
-                                let (rx_send_ch, _) = broadcast::channel(MESSAGE_CHANNEL_SIZE);
-                                let new_dialog =
-                                    Dialog::new(client_ip.clone(), tx_ch.clone(), rx_send_ch);
-                                dialogs_handle.insert(call_id, new_dialog.to_owned());
+                                warn!("Message sent on unknown dialog {}", &call_id);
                             }
                         }
 
@@ -122,9 +119,9 @@ impl TlsSipConn {
         Ok(conn)
     }
 
-    pub async fn dialog(&self) -> Dialog {
+    pub async fn dialog(&self, username: String) -> Dialog {
         let (rx_send_ch, _) = broadcast::channel(MESSAGE_CHANNEL_SIZE);
-        let dialog = Dialog::new(self.client_ip, self.tx_ch.clone(), rx_send_ch);
+        let dialog = Dialog::new(self.client_ip, username, self.tx_ch.clone(), rx_send_ch);
         {
             let mut dialogs_handle = self.dialogs.write().await;
             dialogs_handle.insert(dialog.call_id.value().to_string(), dialog.to_owned());

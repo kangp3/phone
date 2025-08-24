@@ -15,8 +15,10 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
 
     let tls_conn = tlssocket::TlsSipConn::new(ip, SERVER_NAME, SERVER_PORT).await?;
 
-    let mut dialog = tls_conn.dialog().await;
-    dialog.register().await?;
+    let username = String::from("REDACTED");
+    let password = String::from("REDACTED");
+    let mut dialog = tls_conn.dialog(username).await;
+    dialog.register(password).await?;
 
     Ok(())
 }

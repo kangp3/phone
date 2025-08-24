@@ -57,15 +57,6 @@ pub static MY_URI: LazyLock<Uri> = LazyLock::new(|| Uri {
     host_with_port: (*SERVER_ADDR).into(),
     ..Default::default()
 });
-pub static SIPS_URI: LazyLock<Uri> = LazyLock::new(|| Uri {
-    scheme: Some(Scheme::Sips),
-    auth: Some(Auth {
-        user: (*USERNAME).clone(),
-        password: None,
-    }),
-    host_with_port: (*FRANDLINE_PBX_ADDR).clone(),
-    ..Default::default()
-});
 
 pub static TXN_MAILBOXES: LazyLock<Arc<RwLock<HashMap<String, broadcast::Sender<SipMessage>>>>> =
     LazyLock::new(|| Arc::new(RwLock::new(HashMap::new())));
@@ -620,50 +611,13 @@ pub fn assert_resp_successful(resp: &Response) -> Result<(), Box<dyn Error>> {
     }
 }
 
-pub fn add_auth_to_request(req: &mut Request, opaque: Option<String>, nonce: String) {
-    let cnonce = format!("{}/{}", ms_since_epoch(), rand_chars(&mut rng(), 16));
-    // TODO(peter): Actually track this?
-    let nc = 1;
-
-    let ha1 = md5(format!("{}:{}:{}", *USERNAME, REALM, *PASSWORD));
-    let ha2 = md5(format!(
-        "{}:{}:{}",
-        req.method,
-        req.uri.scheme.as_ref().unwrap_or(&Scheme::Sips),
-        (*FRANDLINE_PBX_ADDR)
-    ));
-    let response = md5(format!(
-        "{}:{}:{:08x}:{}:auth:{}",
-        ha1, nonce, nc, cnonce, ha2
-    ));
-
-    req.headers.push(
-        Authorization {
-            scheme: auth::Scheme::Digest,
-            username: (*USERNAME).clone(),
-            realm: REALM.into(),
-            nonce,
-            uri: Uri {
-                scheme: Some(Scheme::Sips),
-                host_with_port: (*FRANDLINE_PBX_ADDR).clone(),
-                ..Default::default()
-            },
-            response,
-            algorithm: Some(Algorithm::Md5),
-            opaque,
-            qop: Some(AuthQop::Auth { cnonce, nc }),
-        }
-        .into(),
-    );
-    req.headers.push(Expires::from(3600).into());
-}
-
 #[derive(Clone, Debug)]
 pub struct Dialog {
     pub tx_ch: mpsc::Sender<SipMessage>,
     pub rx_ch: broadcast::Sender<SipMessage>,
 
     ip: Ipv4Addr,
+    username: String,
 
     cseq: u32,
     pub call_id: CallId,
@@ -677,6 +631,7 @@ pub struct Dialog {
 impl Dialog {
     pub fn new(
         client_ip: Ipv4Addr,
+        username: String,
         tx_ch: mpsc::Sender<SipMessage>,
         rx_ch: broadcast::Sender<SipMessage>,
     ) -> Self {
@@ -691,6 +646,7 @@ impl Dialog {
             rx_ch,
 
             ip: client_ip,
+            username,
 
             cseq: 0,
             call_id,
@@ -711,13 +667,16 @@ impl Dialog {
         let call_id = msg.call_id_header()?.clone();
         let cseq = msg.cseq_header()?.seq()?;
         let from_tag = msg.from_header()?.tag()?.ok_or("missing from tag")?;
-        let to_tag = msg.to_header()?.tag()?.ok_or("missing to tag")?;
+        let to_header = msg.to_header()?.typed()?;
+        let username = to_header.uri.user().ok_or("missing to user")?.to_string();
+        let to_tag = to_header.tag().ok_or("missing to tag")?.to_owned();
 
         Ok(Dialog {
             tx_ch,
             rx_ch,
 
             ip,
+            username,
 
             cseq,
             call_id,
@@ -730,7 +689,7 @@ impl Dialog {
         })
     }
 
-    pub async fn register(&mut self) -> Result<(), Box<dyn Error>> {
+    pub async fn register(&mut self, password: String) -> Result<(), Box<dyn Error>> {
         let req = self.new_request(rsip::Method::Register, vec![]);
         self.send(req.clone()).await?;
 
@@ -741,7 +700,7 @@ impl Dialog {
             .typed()?;
 
         let mut authed_req = self.new_request(rsip::Method::Register, vec![]);
-        add_auth_to_request(&mut authed_req, www_auth.opaque, www_auth.nonce);
+        self.add_auth_to_request(&mut authed_req, password, www_auth.opaque, www_auth.nonce);
         self.send(authed_req.clone()).await?;
 
         let resp: Response = self.recv().await?.try_into()?;
@@ -767,6 +726,16 @@ impl Dialog {
     pub fn new_request(&mut self, method: Method, body: Vec<u8>) -> Request {
         self.cseq += 1;
         let branch: String = format!("{}{}", BRANCH_PREFIX, rand_chars(&mut self.rng, 32));
+
+        let sips_uri = Uri {
+            scheme: Some(Scheme::Sips),
+            auth: Some(Auth {
+                user: self.username.clone(),
+                password: None,
+            }),
+            host_with_port: (*FRANDLINE_PBX_ADDR).clone(),
+            ..Default::default()
+        };
 
         let mut headers: Headers = Default::default();
         headers.push(
@@ -795,12 +764,12 @@ impl Dialog {
         headers.push(self.call_id.clone().into());
         headers.push(
             Contact {
-                display_name: Some((*USERNAME).clone()),
+                display_name: Some(self.username.clone()),
                 uri: Uri {
                     scheme: Some(Scheme::Sips),
                     host_with_port: IpAddr::V4(self.ip).into(),
                     auth: Some(Auth {
-                        user: (*USERNAME).clone(),
+                        user: self.username.clone(),
                         password: None,
                     }),
                     ..Default::default()
@@ -815,16 +784,16 @@ impl Dialog {
         // TODO: Move these somewhere else
         headers.push(
             From {
-                display_name: Some("1103".to_string()),
-                uri: (*SIPS_URI).clone(),
+                display_name: Some(self.username.clone()),
+                uri: sips_uri.clone(),
                 params: vec![self.from_tag.clone().into()],
             }
             .into(),
         );
         headers.push(
             To {
-                display_name: Some("1103".to_string()),
-                uri: (*SIPS_URI).clone(),
+                display_name: Some(self.username.clone()),
+                uri: sips_uri.clone(),
                 // TODO: Use the to_tag here and generate it
                 params: vec![self.from_tag.clone().into()],
             }
@@ -842,5 +811,49 @@ impl Dialog {
             headers,
             body,
         }
+    }
+
+    pub fn add_auth_to_request(
+        &self,
+        req: &mut Request,
+        password: String,
+        opaque: Option<String>,
+        nonce: String,
+    ) {
+        let cnonce = format!("{}/{}", ms_since_epoch(), rand_chars(&mut rng(), 16));
+        // TODO(peter): Actually track this?
+        let nc = 1;
+
+        let ha1 = md5(format!("{}:{}:{}", self.username, REALM, password));
+        let ha2 = md5(format!(
+            "{}:{}:{}",
+            req.method,
+            req.uri.scheme.as_ref().unwrap_or(&Scheme::Sips),
+            (*FRANDLINE_PBX_ADDR)
+        ));
+        let response = md5(format!(
+            "{}:{}:{:08x}:{}:auth:{}",
+            ha1, nonce, nc, cnonce, ha2
+        ));
+
+        req.headers.push(
+            Authorization {
+                scheme: auth::Scheme::Digest,
+                username: self.username.clone(),
+                realm: REALM.into(),
+                nonce,
+                uri: Uri {
+                    scheme: Some(Scheme::Sips),
+                    host_with_port: (*FRANDLINE_PBX_ADDR).clone(),
+                    ..Default::default()
+                },
+                response,
+                algorithm: Some(Algorithm::Md5),
+                opaque,
+                qop: Some(AuthQop::Auth { cnonce, nc }),
+            }
+            .into(),
+        );
+        req.headers.push(Expires::from(3600).into());
     }
 }
