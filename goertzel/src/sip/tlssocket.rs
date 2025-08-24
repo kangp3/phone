@@ -54,6 +54,7 @@ impl TlsSipConn {
             .await?;
         let (recv_stream, mut send_stream) = tokio::io::split(stream);
 
+        // TODO: Drop handlers for these coroutines
         let dialogs_ref = dialogs.clone();
         let tx_ch = send_send_ch.clone();
         let dialog_send_ch = dialog_send_ch.clone();

@@ -17,7 +17,7 @@ use rand::{rng, Rng};
 use rsip::headers::auth::{Algorithm, AuthQop};
 use rsip::headers::{self, auth, CallId, ContentLength, Expires, MaxForwards, UserAgent};
 use rsip::param::{OtherParam, Tag};
-use rsip::prelude::{HasHeaders, HeadersExt, ToTypedHeader};
+use rsip::prelude::*;
 use rsip::typed::{Allow, Authorization, CSeq, Contact, ContentType, From, MediaType, To, Via};
 use rsip::{
     Auth, Header, Headers, HostWithPort, Method, Param, Request, Response, Scheme, SipMessage,
@@ -25,6 +25,7 @@ use rsip::{
 };
 use sdp_rs::{MediaDescription, SessionDescription};
 use tokio::sync::{broadcast, mpsc, RwLock, RwLockWriteGuard};
+use tracing::debug;
 use vec1::Vec1;
 
 const MESSAGE_CHANNEL_SIZE: usize = 64;
@@ -804,12 +805,15 @@ impl Dialog {
 
     pub async fn send(
         &self,
-        msg: impl Into<SipMessage>,
+        msg: (impl Into<SipMessage> + Clone),
     ) -> Result<(), mpsc::error::SendError<SipMessage>> {
-        self.tx_ch.send(msg.into()).await
+        debug!(call_id=%self.call_id.value().to_string(), msg=%msg.clone().into().to_string(), "CALL SEND");
+        self.tx_ch.send((msg).into()).await
     }
 
     pub async fn recv(&self) -> Result<SipMessage, broadcast::error::RecvError> {
-        self.rx_ch.subscribe().recv().await
+        let msg = self.rx_ch.subscribe().recv().await?;
+        debug!(call_id=%self.call_id.value().to_string(), msg=%msg.clone().to_string(), "CALL RECV");
+        Ok(msg)
     }
 }
