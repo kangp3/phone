@@ -730,6 +730,40 @@ impl Dialog {
         })
     }
 
+    pub async fn register(&mut self) -> Result<(), Box<dyn Error>> {
+        let req = self.new_request(rsip::Method::Register, vec![]);
+        self.send(req.clone()).await?;
+
+        let resp: Response = self.recv().await?.try_into()?;
+        let www_auth = resp
+            .www_authenticate_header()
+            .ok_or("missing www auth header")?
+            .typed()?;
+
+        let mut authed_req = self.new_request(rsip::Method::Register, vec![]);
+        add_auth_to_request(&mut authed_req, www_auth.opaque, www_auth.nonce);
+        self.send(authed_req.clone()).await?;
+
+        let resp: Response = self.recv().await?.try_into()?;
+        assert_resp_successful(&resp)?;
+
+        Ok(())
+    }
+
+    pub async fn send(
+        &self,
+        msg: (impl Into<SipMessage> + Clone),
+    ) -> Result<(), mpsc::error::SendError<SipMessage>> {
+        debug!(call_id=%self.call_id.value().to_string(), msg=%msg.clone().into().to_string().lines().next().unwrap_or("empty"), "SIP Send");
+        self.tx_ch.send((msg).into()).await
+    }
+
+    pub async fn recv(&self) -> Result<SipMessage, broadcast::error::RecvError> {
+        let msg = self.rx_ch.subscribe().recv().await?;
+        debug!(call_id=%self.call_id.value().to_string(), msg=%msg.clone().to_string().lines().next().unwrap_or("empty"), "SIP Recv");
+        Ok(msg)
+    }
+
     pub fn new_request(&mut self, method: Method, body: Vec<u8>) -> Request {
         self.cseq += 1;
         let branch: String = format!("{}{}", BRANCH_PREFIX, rand_chars(&mut self.rng, 32));
@@ -808,39 +842,5 @@ impl Dialog {
             headers,
             body,
         }
-    }
-
-    pub async fn send(
-        &self,
-        msg: (impl Into<SipMessage> + Clone),
-    ) -> Result<(), mpsc::error::SendError<SipMessage>> {
-        debug!(call_id=%self.call_id.value().to_string(), msg=%msg.clone().into().to_string().lines().next().unwrap_or("empty"), "SIP Send");
-        self.tx_ch.send((msg).into()).await
-    }
-
-    pub async fn recv(&self) -> Result<SipMessage, broadcast::error::RecvError> {
-        let msg = self.rx_ch.subscribe().recv().await?;
-        debug!(call_id=%self.call_id.value().to_string(), msg=%msg.clone().to_string().lines().next().unwrap_or("empty"), "SIP Recv");
-        Ok(msg)
-    }
-
-    pub async fn register(&mut self) -> Result<(), Box<dyn Error>> {
-        let req = self.new_request(rsip::Method::Register, vec![]);
-        self.send(req.clone()).await?;
-
-        let resp: Response = self.recv().await?.try_into()?;
-        let www_auth = resp
-            .www_authenticate_header()
-            .ok_or("missing www auth header")?
-            .typed()?;
-
-        let mut authed_req = self.new_request(rsip::Method::Register, vec![]);
-        add_auth_to_request(&mut authed_req, www_auth.opaque, www_auth.nonce);
-        self.send(authed_req.clone()).await?;
-
-        let resp: Response = self.recv().await?.try_into()?;
-        assert_resp_successful(&resp)?;
-
-        Ok(())
     }
 }
