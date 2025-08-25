@@ -818,6 +818,33 @@ impl Dialog {
         }
     }
 
+    fn contact(&self) -> Contact {
+        Contact {
+            display_name: Some(self.username.clone()),
+            uri: Uri {
+                scheme: Some(Scheme::Sips),
+                host_with_port: self.server_host.clone(),
+                auth: Some(Auth {
+                    user: self.username.clone(),
+                    password: None,
+                }),
+                params: vec![
+                    Param::Transport(Transport::Tls),
+                    Param::Other("ob".into(), None),
+                ],
+                ..Default::default()
+            },
+            params: vec![
+                Param::Q("1".into()),
+                Param::Other(
+                    "+sip.instance".into(),
+                    Some(format!("\"<urn:uuid:{}>\"", self.sip_instance_uuid).into()),
+                ),
+                Param::Other("reg-id".into(), Some("1".into())),
+            ],
+        }
+    }
+
     pub fn new_request(&mut self, method: Method, body: Vec<u8>) -> Request {
         self.cseq += 1;
         let branch: String = format!("{}{}", BRANCH_PREFIX, rand_chars(&mut self.rng, 32));
@@ -847,33 +874,7 @@ impl Dialog {
         );
         headers.push(UserAgent::from(format!("{}/{}", USER_AGENT, UA_VERSION)).into());
         headers.push(self.call_id.clone().into());
-        headers.push(
-            Contact {
-                display_name: Some(self.username.clone()),
-                uri: Uri {
-                    scheme: Some(Scheme::Sips),
-                    host_with_port: self.server_host.clone(),
-                    auth: Some(Auth {
-                        user: self.username.clone(),
-                        password: None,
-                    }),
-                    params: vec![
-                        Param::Transport(Transport::Tls),
-                        Param::Other("ob".into(), None),
-                    ],
-                    ..Default::default()
-                },
-                params: vec![
-                    Param::Q("1".into()),
-                    Param::Other(
-                        "+sip.instance".into(),
-                        Some(format!("\"<urn:uuid:{}>\"", self.sip_instance_uuid).into()),
-                    ),
-                    Param::Other("reg-id".into(), Some("1".into())),
-                ],
-            }
-            .into(),
-        );
+        headers.push(self.contact().into());
         headers.push(MaxForwards::from(MAX_FORWARDS).into());
         headers.push(ContentLength::from(body.len() as u32).into());
 
@@ -919,6 +920,49 @@ impl Dialog {
         );
 
         req
+    }
+
+    pub fn response_to(
+        &mut self,
+        req: Request,
+        status_code: StatusCode,
+        body: Vec<u8>,
+    ) -> Result<SipMessage, Box<dyn Error>> {
+        self.cseq = req.cseq_header()?.seq()?;
+
+        let mut headers: Headers = Default::default();
+        for header in req.headers().clone() {
+            match header {
+                h @ Header::CallId(_)
+                | h @ Header::CSeq(_)
+                | h @ Header::From(_)
+                | h @ Header::Via(_) => headers.push(h),
+                ref h @ Header::To(ref to) => match to.tag()? {
+                    Some(_) => headers.push(h.clone()),
+                    None => {
+                        let tag = match &self.to_tag {
+                            Some(tag) => tag.clone(),
+                            None => {
+                                let tag: Tag = rand_chars(&mut self.rng, 16).into();
+                                self.to_tag = Some(tag.clone());
+                                tag
+                            }
+                        };
+                        headers.push(Header::To(to.clone().with_tag(tag)?));
+                    }
+                },
+                _ => {}
+            }
+        }
+        headers.push(self.contact().into());
+        headers.push(ContentLength::from(body.len() as u32).into());
+
+        Ok(SipMessage::Response(Response {
+            status_code,
+            version: Version::V2,
+            headers,
+            body,
+        }))
     }
 
     pub fn add_auth_to_request(

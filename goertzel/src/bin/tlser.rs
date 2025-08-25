@@ -3,6 +3,7 @@ use std::error::Error;
 
 use goertzel::contacts::CONTACTS;
 use goertzel::sip::{tlssocket, SERVER_NAME, SERVER_PORT};
+use rsip::StatusCode;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
@@ -38,6 +39,12 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
         .ok_or("error getting new msg")?;
     println!("Got new dialog");
     let mut new_dialog = tls_conn.dialog_from_req(&new_msg).await?;
+    let ringing_resp = new_dialog.response_to(new_msg.try_into()?, StatusCode::Ringing, vec![])?;
+    new_dialog.send(ringing_resp).await?;
+
+    dialog_1102.recv().await?;
+
+    dialog_1102.recv().await?;
 
     Ok(())
 }
