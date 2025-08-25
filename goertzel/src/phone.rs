@@ -1,4 +1,3 @@
-use std::env;
 use std::error::Error;
 use std::net::SocketAddr;
 use std::str::FromStr;
@@ -68,15 +67,13 @@ pub struct Phone {
 }
 
 impl Phone {
-    pub async fn new() -> Result<Self, Box<dyn Error>> {
+    pub async fn new(username: String, password: String) -> Result<Self, Box<dyn Error>> {
         let (mic_ch, mic_stream, mic_cfg) = audio::get_input_channel()?;
         let (spk_ch, spk_stream, spk_cfg) = audio::get_output_channel()?;
 
         let (shk_pin, _, shk_ch) = hook::try_register_shk()?;
         let (pulse_ch, _, hook_ch, _) = pulse::notgoertzelme(shk_ch);
 
-        let username = env::var("SIP_USERNAME")?;
-        let password = env::var("SIP_PASSWORD")?;
         let tls_conn = if do_i_have_internet().await? {
             debug!("Registering to SIP server");
             let ip = public_ip::addr_v4().await.ok_or("no ip")?;

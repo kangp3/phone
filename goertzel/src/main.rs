@@ -1,6 +1,6 @@
 use std::error::Error;
 use std::time::Duration;
-use std::{panic, process};
+use std::{env, panic, process};
 
 use goertzel::phone::Phone;
 use goertzel::ring;
@@ -22,7 +22,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
         process::exit(1);
     }));
 
-    let phone = Phone::new().await?;
+    let username = env::var("SIP_USERNAME")?;
+    let password = env::var("SIP_PASSWORD")?;
+    let phone = Phone::new(username, password).await?;
     info!("Got mic, listening...");
 
     {
