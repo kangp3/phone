@@ -1,8 +1,8 @@
-use std::error::Error;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::{Arc, LazyLock};
 use std::time::Duration;
 
+use anyhow::Result;
 use tokio::net::UdpSocket;
 use tokio::sync::{broadcast, mpsc};
 use tokio::task::AbortHandle;
@@ -27,7 +27,7 @@ pub struct Socket {
 }
 
 impl Socket {
-    pub async fn bind() -> Result<Self, Box<dyn Error>> {
+    pub async fn bind() -> Result<Self> {
         let sock = UdpSocket::bind("0.0.0.0:19512").await?;
         Ok(Self {
             sock: Arc::new(sock),
@@ -38,7 +38,7 @@ impl Socket {
         })
     }
 
-    pub async fn port(&self) -> Result<u16, Box<dyn Error>> {
+    pub async fn port(&self) -> Result<u16> {
         Ok(self.sock.local_addr().map(|addr| addr.port())?)
     }
 
@@ -54,7 +54,7 @@ impl Socket {
         addr: SocketAddr,
         mut audio_in: broadcast::Receiver<i16>,
         audio_out: mpsc::Sender<i16>,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<()> {
         self.remote = Some(addr);
         debug!("rtp: connecting to remote at {}", addr);
         self.sock.connect(addr).await?;

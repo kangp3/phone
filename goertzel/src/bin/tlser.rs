@@ -1,7 +1,7 @@
 use std::env;
-use std::error::Error;
 use std::time::Duration;
 
+use anyhow::{anyhow, Result};
 use goertzel::contacts::CONTACTS;
 use goertzel::sip::{tlssocket, SERVER_NAME, SERVER_PORT};
 use rsip::StatusCode;
@@ -9,13 +9,13 @@ use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
 #[tokio::main]
-pub async fn main() -> Result<(), Box<dyn Error>> {
+pub async fn main() -> Result<()> {
     tracing_subscriber::registry()
         .with(fmt::layer())
         .with(EnvFilter::from_default_env())
         .init();
 
-    let ip = public_ip::addr_v4().await.ok_or("no ip")?;
+    let ip = public_ip::addr_v4().await.ok_or(anyhow!("no ip"))?;
 
     let mut tls_conn = tlssocket::TlsSipConn::new(ip, SERVER_NAME, SERVER_PORT).await?;
 
@@ -29,14 +29,14 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
     let mut dialog_1102 = tls_conn.dialog(String::from("1102")).await;
     let to = (*CONTACTS)
         .get("1103")
-        .ok_or("contact is missing after I EXPLICITLY checked it")?;
+        .ok_or(anyhow!("contact is missing after I EXPLICITLY checked it"))?;
     dialog_1102.invite(password.clone(), to.clone()).await?;
 
     let new_msg = tls_conn
         .new_msg_ch
         .recv()
         .await
-        .ok_or("error getting new msg")?;
+        .ok_or(anyhow!("error getting new msg"))?;
     let mut new_dialog = tls_conn.dialog_from_req(&new_msg).await?;
 
     let ringing_resp =

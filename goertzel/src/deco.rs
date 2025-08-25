@@ -1,5 +1,6 @@
 use std::time::Duration;
 
+use anyhow::{anyhow, Result};
 use tokio::sync::{broadcast, mpsc};
 use tokio::time::sleep;
 use tracing::debug;
@@ -37,7 +38,7 @@ impl State {
         *self == State::Lower((NULL, 0))
     }
 
-    fn poosh(self, dig: u8) -> Result<(State, Vec<char>), String> {
+    fn poosh(self, dig: u8) -> Result<(State, Vec<char>)> {
         let mut c = Vec::new();
         let next = match self {
             _ if dig == SEXTILE => Self::default(),
@@ -101,7 +102,7 @@ impl State {
                 Self::default()
             }
 
-            _ => return Err(String::from("uh oh stinky state")),
+            _ => return Err(anyhow!("uh oh stinky state")),
         };
         Ok((next, c))
     }
@@ -175,7 +176,7 @@ pub fn de_digs(
     tokio::spawn(and_log_err("deco:de_digs goertzel", async move {
         loop {
             let dig = tokio::select! {
-                dig = goertzel_ch.recv() => dig.ok_or("goertz ch closed")?,
+                dig = goertzel_ch.recv() => dig.ok_or(anyhow!("goertz ch closed"))?,
                 _ = goertz_send.closed() => {
                     debug!("goertz send ch closed");
                     break;
@@ -227,7 +228,7 @@ pub fn ding(
                     debug!("char timeout");
                 },
                 dig = digs_ch.recv() => {
-                    let dig = dig.ok_or("digs ch closed")?;
+                    let dig = dig.ok_or(anyhow!("digs ch closed"))?;
                     let (new_state, cs) = state.poosh(dig)?;
                     state = new_state;
                     for c in cs {

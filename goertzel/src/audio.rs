@@ -1,7 +1,7 @@
-use std::error::Error;
 use std::thread;
 use std::time::Duration;
 
+use anyhow::{anyhow, Result};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{
     InputCallbackInfo, OutputCallbackInfo, Sample, SampleFormat, Stream, StreamConfig,
@@ -16,8 +16,7 @@ const INPUT_BUF_SIZE: usize = 1 << 16;
 const OUTPUT_SAMPLE_RATE: u32 = 48000;
 const OUTPUT_BUF_SIZE: usize = 1 << 12;
 
-pub fn get_input_channel(
-) -> Result<(broadcast::Sender<i16>, Stream, SupportedStreamConfig), Box<dyn Error>> {
+pub fn get_input_channel() -> Result<(broadcast::Sender<i16>, Stream, SupportedStreamConfig)> {
     let (send_ch, _rcv_ch) = broadcast::channel(INPUT_BUF_SIZE);
     let send_ch_i16 = send_ch.clone();
     let send_ch_f32 = send_ch.clone();
@@ -47,7 +46,8 @@ pub fn get_input_channel(
             }
         }
     }
-    let supported_config = supported_config.ok_or("could not get supported input config")?;
+    let supported_config =
+        supported_config.ok_or(anyhow!("could not get supported input config"))?;
     let config: StreamConfig = supported_config.clone().into();
 
     let n_channels = supported_config.channels();
@@ -66,7 +66,7 @@ pub fn get_input_channel(
     let stream = match supported_config.sample_format() {
         SampleFormat::I16 => device.build_input_stream(&config, handle_i16, handle_err, None)?,
         SampleFormat::F32 => device.build_input_stream(&config, handle_f32, handle_err, None)?,
-        _ => Err("invalid sample format")?,
+        _ => Err(anyhow!("invalid sample format"))?,
     };
 
     stream.play().unwrap();
@@ -90,7 +90,7 @@ pub fn get_wav_samples(
     let reader_bits = reader.spec().bits_per_sample;
     let n_channels = reader.spec().channels;
 
-    let samples: Box<dyn Iterator<Item = Result<i16, hound::Error>> + Send> = {
+    let samples: Box<dyn Iterator<Item = Result<i16>> + Send> = {
         match (sample_format, reader_bits) {
             (hound::SampleFormat::Float, _) => Box::new(
                 reader
@@ -118,8 +118,7 @@ pub fn get_wav_samples(
     )
 }
 
-pub fn get_output_channel(
-) -> Result<(mpsc::Sender<i16>, Stream, SupportedStreamConfig), Box<dyn Error>> {
+pub fn get_output_channel() -> Result<(mpsc::Sender<i16>, Stream, SupportedStreamConfig)> {
     let host = cpal::default_host();
     let device = loop {
         if let Some(device) = host.default_output_device() {
@@ -145,7 +144,8 @@ pub fn get_output_channel(
             }
         }
     }
-    let supported_config = supported_config.ok_or("could not get supported output config")?;
+    let supported_config =
+        supported_config.ok_or(anyhow!("could not get supported output config"))?;
     let config: StreamConfig = supported_config.clone().into();
 
     let n_channels = supported_config.channels();
@@ -187,7 +187,7 @@ pub fn get_output_channel(
             move |_| panic!("Fuck error handling (output) 😮"),
             None,
         )?,
-        _ => Err("invalid sample format")?,
+        _ => Err(anyhow!("invalid sample format"))?,
     };
 
     stream.play()?;

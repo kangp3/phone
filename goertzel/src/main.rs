@@ -1,7 +1,7 @@
-use std::error::Error;
 use std::time::Duration;
 use std::{env, panic, process};
 
+use anyhow::Result;
 use goertzel::phone::Phone;
 use goertzel::ring;
 use tokio::time::sleep;
@@ -9,7 +9,7 @@ use tracing::{error, info};
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn Error>> {
+async fn main() -> Result<()> {
     tracing_subscriber::registry()
         .with(fmt::layer())
         .with(EnvFilter::from_default_env())
@@ -33,7 +33,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     }
 
     if let Err(e) = phone.begin_life().await {
-        error!(e);
+        error!("{:?}", e);
     }
     Ok(())
 }

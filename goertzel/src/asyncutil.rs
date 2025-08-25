@@ -1,15 +1,16 @@
-use std::error::Error;
+use std::fmt::Display;
 use std::future::Future;
 
+use anyhow::Result;
 use tokio::select;
 use tracing::error;
 
 pub async fn and_log_err(
-    tag: impl AsRef<str> + tracing::Value,
-    fut: impl Future<Output = Result<(), Box<dyn Error>>>,
+    tag: impl AsRef<str> + tracing::Value + Display,
+    fut: impl Future<Output = anyhow::Result<()>>,
 ) {
-    if let Err(e) = fut.await {
-        error!(tag, e);
+    if let Result::Err(e) = fut.await {
+        error!("{}\n{:?}", tag, &e);
     }
 }
 

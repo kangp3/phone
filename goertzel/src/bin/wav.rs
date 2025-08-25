@@ -1,5 +1,4 @@
-use std::error::Error;
-
+use anyhow::Result;
 use goertzel::dtmf::{goertzeliter, CHUNK_SIZE};
 use pico_args::Arguments;
 use tracing::info;
@@ -11,7 +10,7 @@ const CORRECT_DIGS: [u8; 67] = [
     1, 1, 2, 0,
 ];
 
-fn main() -> Result<(), Box<dyn Error>> {
+fn main() -> Result<()> {
     tracing_subscriber::registry()
         .with(fmt::layer())
         .with(EnvFilter::from_default_env())

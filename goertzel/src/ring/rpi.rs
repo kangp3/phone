@@ -1,6 +1,7 @@
 use std::error::Error;
 use std::time::Duration;
 
+use anyhow::Result;
 use rppal::gpio::Gpio;
 use tokio::task::AbortHandle;
 use tokio::time::sleep;
@@ -17,7 +18,7 @@ pub struct RingHandle {
     handle: AbortHandle,
 }
 
-pub fn ring_phone() -> Result<RingHandle, Box<dyn Error>> {
+pub fn ring_phone() -> Result<RingHandle> {
     let gpio = Gpio::new()?;
     let mut rm = gpio.get(RM_PIN)?.into_output_low();
     let mut fr = gpio.get(FR_PIN)?.into_output_low();

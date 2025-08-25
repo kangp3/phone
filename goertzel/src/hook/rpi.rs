@@ -1,6 +1,6 @@
-use std::error::Error;
 use std::time::Duration;
 
+use anyhow::Result;
 use rppal::gpio::{Gpio, InputPin, Trigger};
 use rppal::system::DeviceInfo;
 use tokio::sync::broadcast::{channel, Receiver, Sender};
@@ -10,8 +10,7 @@ use crate::hook::SwitchHook;
 
 const SHK_PIN: u8 = 15;
 
-pub fn try_register_shk(
-) -> Result<(InputPin, Sender<SwitchHook>, Receiver<SwitchHook>), Box<dyn Error>> {
+pub fn try_register_shk() -> Result<(InputPin, Sender<SwitchHook>, Receiver<SwitchHook>)> {
     DeviceInfo::new()?;
 
     debug!("Registering SHK handler...");

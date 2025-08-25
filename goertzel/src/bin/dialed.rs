@@ -1,20 +1,20 @@
 use std::env;
-use std::error::Error;
 use std::time::Duration;
 
+use anyhow::{anyhow, Result};
 use goertzel::sip::{tlssocket, SERVER_NAME, SERVER_PORT};
 use rsip::StatusCode;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
 #[tokio::main]
-pub async fn main() -> Result<(), Box<dyn Error>> {
+pub async fn main() -> Result<()> {
     tracing_subscriber::registry()
         .with(fmt::layer())
         .with(EnvFilter::from_default_env())
         .init();
 
-    let ip = public_ip::addr_v4().await.ok_or("no ip")?;
+    let ip = public_ip::addr_v4().await.ok_or(anyhow!("no ip"))?;
 
     let mut tls_conn = tlssocket::TlsSipConn::new(ip, SERVER_NAME, SERVER_PORT).await?;
 
@@ -26,7 +26,7 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
         .new_msg_ch
         .recv()
         .await
-        .ok_or("error getting new msg")?;
+        .ok_or(anyhow!("error getting new msg"))?;
     let mut new_dialog = tls_conn.dialog_from_req(&new_msg).await?;
 
     let ringing_resp =

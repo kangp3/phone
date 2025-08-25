@@ -1,10 +1,11 @@
+use anyhow::Result;
 use ctrlc;
 use tokio::sync::broadcast::{channel, Receiver, Sender};
 use tracing::{debug, warn};
 
 use crate::hook::SwitchHook;
 
-pub fn try_register_shk() -> Result<((), Sender<SwitchHook>, Receiver<SwitchHook>), ctrlc::Error> {
+pub fn try_register_shk() -> Result<((), Sender<SwitchHook>, Receiver<SwitchHook>)> {
     debug!("Registering SHK handler...");
 
     let (shk_send_ch, shk_recv_ch) = channel(1);

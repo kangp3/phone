@@ -1,8 +1,8 @@
 use std::collections::HashMap;
-use std::error::Error;
 use std::net::Ipv4Addr;
 use std::sync::Arc;
 
+use anyhow::{anyhow, Result};
 use rsip::prelude::{HasHeaders, HeadersExt, ToTypedHeader, UntypedHeader};
 use rsip::{header_opt, Header};
 use rsip::{HostWithPort, SipMessage};
@@ -35,7 +35,7 @@ pub struct TlsSipConn {
 }
 
 impl TlsSipConn {
-    pub async fn new(client_ip: Ipv4Addr, host: &str, port: u16) -> Result<Self, Box<dyn Error>> {
+    pub async fn new(client_ip: Ipv4Addr, host: &str, port: u16) -> Result<Self> {
         let sip_instance_uuid = Uuid::new_v4();
 
         let dialogs = Arc::new(RwLock::new(
@@ -101,7 +101,7 @@ impl TlsSipConn {
                         (*dialog).clone()
                     } else {
                         debug!(
-                            user=%msg.to_header()?.typed()?.uri.auth.ok_or("missing auth in uri")?.user,
+                            user=%msg.to_header()?.typed()?.uri.auth.ok_or(anyhow!("missing auth in uri"))?.user,
                             call_id=call_id,
                             msg=%msg.clone().to_string().lines().next().unwrap_or("empty"),
                             "SIP New Recv",
@@ -130,7 +130,7 @@ impl TlsSipConn {
 
                         send_stream.write_all(msg.to_string().as_bytes()).await?;
                     }
-                    None => return Err("got a none on the send".into()), // TODO: Maybe retry on this error
+                    None => return Err(anyhow!("got a none on the send")), // TODO: Maybe retry on this error
                 }
             }
         }));
@@ -157,7 +157,7 @@ impl TlsSipConn {
         dialog
     }
 
-    pub async fn dialog_from_req(&self, msg: &SipMessage) -> Result<Dialog, Box<dyn Error>> {
+    pub async fn dialog_from_req(&self, msg: &SipMessage) -> Result<Dialog> {
         let (rx_send_ch, rx_recv_ch) = mpsc::channel(MESSAGE_CHANNEL_SIZE);
         let dialog = Dialog::from_request(
             (self.host.clone(), self.port).into(),

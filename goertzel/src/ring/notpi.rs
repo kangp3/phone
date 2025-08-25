@@ -1,6 +1,6 @@
-use std::error::Error;
 use std::time::Duration;
 
+use anyhow::Result;
 use tokio::task::AbortHandle;
 use tokio::time::sleep;
 use tracing::{debug, info};
@@ -11,7 +11,7 @@ pub struct RingHandle {
     handle: AbortHandle,
 }
 
-pub fn ring_phone() -> Result<RingHandle, Box<dyn Error>> {
+pub fn ring_phone() -> Result<RingHandle> {
     let handle = tokio::spawn(and_log_err("ringing", async move {
         loop {
             info!("Ring ring\x07");

@@ -1,8 +1,8 @@
-use std::error::Error;
 use std::net::{IpAddr, Ipv4Addr};
 use std::str::FromStr;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use anyhow::{anyhow, Result};
 use itertools::Itertools;
 use md5::{Digest, Md5};
 use rand::distr::Alphanumeric;
@@ -63,10 +63,10 @@ fn micros_since_epoch() -> u128 {
         .as_micros()
 }
 
-pub fn assert_status(resp: &Response) -> Result<(), Box<dyn Error>> {
+pub fn assert_status(resp: &Response) -> Result<()> {
     match resp.status_code.kind() {
         StatusCodeKind::Successful | StatusCodeKind::Provisional => Ok(()),
-        _ => Err(format!("unsuccessful resp {}", resp.status_code).into()),
+        _ => Err(anyhow!("unsuccessful resp {}", resp.status_code)),
     }
 }
 
@@ -148,7 +148,7 @@ impl Dialog {
         tx_ch: mpsc::Sender<SipMessage>,
         rx_ch: mpsc::Receiver<SipMessage>,
         msg: &SipMessage,
-    ) -> Result<Self, Box<dyn Error>> {
+    ) -> Result<Self> {
         let mut rng = StdRng::from_rng(&mut rand::rng());
 
         let call_id = msg.call_id_header()?.clone();
@@ -158,7 +158,7 @@ impl Dialog {
             .to_header()?
             .typed()?
             .with_tag(rand_chars(&mut rng, 16).into());
-        let username = to.uri.user().ok_or("missing to user")?.to_string();
+        let username = to.uri.user().ok_or(anyhow!("missing to user"))?.to_string();
 
         Ok(Dialog {
             tx_ch,
@@ -236,7 +236,7 @@ impl Dialog {
         }
     }
 
-    pub fn sdp_from(&self, req: Request) -> Result<SessionDescription, Box<dyn Error>> {
+    pub fn sdp_from(&self, req: Request) -> Result<SessionDescription> {
         let sdp = SessionDescription::from_str(std::str::from_utf8(&req.body)?)?;
         let sess_id = sdp.origin.sess_id;
         Ok(self.sdp(sess_id))
@@ -247,28 +247,30 @@ impl Dialog {
         req: Request,
         status_code: StatusCode,
         sdp: SessionDescription,
-    ) -> Result<SipMessage, Box<dyn Error>> {
+    ) -> Result<SipMessage> {
         let mut resp = self.response_to(req, status_code, sdp.to_string().into_bytes())?;
         resp.headers_mut()
             .push(ContentType(MediaType::Sdp(vec![])).into());
         Ok(resp)
     }
 
-    pub async fn send(
-        &self,
-        msg: impl Into<SipMessage> + Clone,
-    ) -> Result<(), mpsc::error::SendError<SipMessage>> {
+    pub async fn send(&self, msg: impl Into<SipMessage> + Clone) -> Result<()> {
         debug!(
             user=%self.username,
             call_id=%self.call_id.value().to_string(),
             msg=%msg.clone().into().to_string().lines().next().unwrap_or("empty"),
             "SIP Send",
         );
-        self.tx_ch.send((msg).into()).await
+        self.tx_ch.send((msg).into()).await?;
+        Ok(())
     }
 
-    pub async fn recv(&mut self) -> Result<SipMessage, Box<dyn Error>> {
-        let msg = self.rx_ch.recv().await.ok_or("failed recv dialog rx")?;
+    pub async fn recv(&mut self) -> Result<SipMessage> {
+        let msg = self
+            .rx_ch
+            .recv()
+            .await
+            .ok_or(anyhow!("failed recv dialog rx"))?;
         debug!(
             user=%self.username,
             call_id=%self.call_id.value().to_string(),
@@ -355,7 +357,7 @@ impl Dialog {
         }
     }
 
-    fn new_register_request(&mut self) -> Result<Request, Box<dyn Error>> {
+    fn new_register_request(&mut self) -> Result<Request> {
         let mut req = self.new_request(rsip::Method::Register, vec![]);
         let from_header = req.from_header()?.typed()?;
         // Register should only run on the start of a dialog, so To hasn't been set.
@@ -374,7 +376,7 @@ impl Dialog {
         req: Request,
         status_code: StatusCode,
         body: Vec<u8>,
-    ) -> Result<SipMessage, Box<dyn Error>> {
+    ) -> Result<SipMessage> {
         self.cseq = req.cseq_header()?.seq()?;
 
         let mut headers: Headers = Default::default();
@@ -450,14 +452,14 @@ impl Dialog {
         req.headers.push(Expires::from(3600).into());
     }
 
-    pub async fn register(&mut self, password: String) -> Result<(), Box<dyn Error>> {
+    pub async fn register(&mut self, password: String) -> Result<()> {
         let req = self.new_register_request()?;
         self.send(req).await?;
 
         let resp: Response = self.recv().await?.try_into()?;
         let www_auth = resp
             .www_authenticate_header()
-            .ok_or("missing www auth header")?
+            .ok_or(anyhow!("missing www auth header"))?
             .typed()?;
 
         let mut authed_req = self.new_register_request()?;
@@ -470,7 +472,7 @@ impl Dialog {
         Ok(())
     }
 
-    pub async fn invite(&mut self, password: String, to: To) -> Result<(), Box<dyn Error>> {
+    pub async fn invite(&mut self, password: String, to: To) -> Result<()> {
         let sess_id = micros_since_epoch().to_string();
         let body = self.sdp(sess_id).to_string();
         let mut req = self.new_request(Method::Invite, body.clone().into());
@@ -482,7 +484,7 @@ impl Dialog {
         let resp: Response = self.recv().await?.try_into()?;
         let www_auth = resp
             .www_authenticate_header()
-            .ok_or("missing www auth header")?
+            .ok_or(anyhow!("missing www auth header"))?
             .typed()?;
 
         let mut req = self.new_request(Method::Invite, body.into());
@@ -498,7 +500,7 @@ impl Dialog {
         Ok(())
     }
 
-    pub async fn ack(&mut self, resp: Response) -> Result<(), Box<dyn Error>> {
+    pub async fn ack(&mut self, resp: Response) -> Result<()> {
         let mut req = self.new_request(Method::Ack, vec![]);
         for header in resp.headers.clone() {
             match header {
@@ -521,14 +523,14 @@ impl Dialog {
         Ok(())
     }
 
-    pub async fn cancel(&mut self) -> Result<(), Box<dyn Error>> {
+    pub async fn cancel(&mut self) -> Result<()> {
         let req = self.new_request(Method::Cancel, vec![]);
         self.send(req).await?;
 
         Ok(())
     }
 
-    pub async fn bye(&mut self) -> Result<(), Box<dyn Error>> {
+    pub async fn bye(&mut self) -> Result<()> {
         let req = self.new_request(Method::Bye, vec![]);
         self.send(req).await?;
 

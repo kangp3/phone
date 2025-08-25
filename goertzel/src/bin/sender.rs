@@ -1,5 +1,4 @@
-use std::error::Error;
-
+use anyhow::Result;
 use goertzel::audio;
 use tokio::net::UdpSocket;
 use tokio::select;
@@ -10,7 +9,7 @@ const SAMPLES_PER_BUF: usize = 960; // 20ms of samples @ 48k
 const BUF_SIZE: usize = 2 * SAMPLES_PER_BUF;
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn Error>> {
+async fn main() -> Result<()> {
     tracing_subscriber::registry()
         .with(fmt::layer())
         .with(EnvFilter::from_default_env())

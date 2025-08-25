@@ -1,4 +1,3 @@
-use std::error::Error;
 use std::net::SocketAddr;
 use std::str::FromStr;
 use std::time::Duration;
@@ -19,6 +18,7 @@ use crate::sip::tlssocket::TlsSipConn;
 use crate::tone::TwoToneGen;
 use crate::{audio, deco, ring, rtp, sip};
 use crate::{dtmf, pulse};
+use anyhow::{anyhow, Result};
 
 pub enum State {
     Connected(TlsSipConn, Dial),
@@ -28,7 +28,7 @@ pub enum State {
 pub enum WiFi {
     OnHook, // On hook, standby
     Await,  // Awaiting user input for SSID and pass
-    Error(Box<dyn Error>),
+    Error(anyhow::Error),
 }
 
 // TODO(peter): SIP registration steps
@@ -40,7 +40,7 @@ pub enum Dial {
     Dialing(sip::Dialog, rtp::socket::Socket),
     Connected(sip::Dialog, rtp::socket::Socket),
     Busy,
-    Error(Box<dyn Error>),
+    Error(anyhow::Error),
 }
 
 pub struct Phone {
@@ -67,7 +67,7 @@ pub struct Phone {
 }
 
 impl Phone {
-    pub async fn new(username: String, password: String) -> Result<Self, Box<dyn Error>> {
+    pub async fn new(username: String, password: String) -> Result<Self> {
         let (mic_ch, mic_stream, mic_cfg) = audio::get_input_channel()?;
         let (spk_ch, spk_stream, spk_cfg) = audio::get_output_channel()?;
 
@@ -76,7 +76,7 @@ impl Phone {
 
         let tls_conn = if do_i_have_internet().await? {
             debug!("Registering to SIP server");
-            let ip = public_ip::addr_v4().await.ok_or("no ip")?;
+            let ip = public_ip::addr_v4().await.ok_or(anyhow!("no ip"))?;
             let username = username.clone();
             let password = password.clone();
             let tls_conn =
@@ -120,7 +120,7 @@ impl Phone {
         })
     }
 
-    async fn get_wifi_creds(&self) -> Result<(), Box<dyn Error>> {
+    async fn get_wifi_creds(&self) -> Result<()> {
         let pulse_ch = self.pulse_ch.subscribe();
         let goertzel_ch = dtmf::goertzelme(self.audio_in_ch.subscribe());
         let mut chars_ch = deco::ding(goertzel_ch, pulse_ch);
@@ -165,13 +165,13 @@ impl Phone {
             .await?;
 
         if !status.success() {
-            Err("no Wi-Fi 4 me :(".into())
+            Err(anyhow!("no Wi-Fi 4 me :("))
         } else {
             Ok(())
         }
     }
 
-    pub async fn begin_life(mut self) -> Result<(), Box<dyn Error>> {
+    pub async fn begin_life(mut self) -> Result<()> {
         loop {
             self.state = match self.state {
                 State::Connected(mut tls_conn, Dial::OnHook) => {
@@ -181,7 +181,7 @@ impl Phone {
                     loop {
                         select! {
                             recvd = tls_conn.new_msg_ch.recv() => {
-                                let invite = recvd.ok_or("new msg chan closed")?;
+                                let invite = recvd.ok_or(anyhow!("new msg chan closed"))?;
                                 let dialog = tls_conn.dialog_from_req(&invite).await?;
                                 let rtp_sock = rtp::socket::Socket::bind().await?;
                                 break State::Connected(tls_conn, Dial::Ringing(dialog, rtp_sock, invite));
@@ -189,7 +189,7 @@ impl Phone {
                             hook_evt = hook_ch.recv() => match hook_evt {
                                 Ok(SwitchHook::ON) => {},
                                 Ok(SwitchHook::OFF) => break State::Connected(tls_conn, Dial::Await),
-                                Err(e) => break State::Connected(tls_conn, Dial::Error(Box::new(e))),
+                                Err(e) => break State::Connected(tls_conn, Dial::Error(e.into())),
                             },
                         }
                     }
@@ -215,9 +215,9 @@ impl Phone {
                                         dialog.send(resp).await?;
                                         break State::Connected(tls_conn, Dial::OnHook);
                                     },
-                                    _ => Err(format!("got non-cancel request during ringing: {}", req))?,
+                                    _ => Err(anyhow!("got non-cancel request during ringing: {}", req))?,
                                 },
-                                SipMessage::Response(_) => Err("got unexpected response during ringing")?,
+                                SipMessage::Response(_) => Err(anyhow!("got unexpected response during ringing"))?,
                             },
                             hook_evt = hook_ch.recv() => match hook_evt {
                                 Ok(SwitchHook::ON) => {},
@@ -229,12 +229,12 @@ impl Phone {
                                     match dialog.recv().await? {
                                         SipMessage::Request(req) => match req.method() {
                                             rsip::Method::Ack => break State::Connected(tls_conn, Dial::Connected(dialog, rtp_sock)),
-                                            _ => Err(format!("got non-ack request during ringing: {}", req))?,
+                                            _ => Err(anyhow!("got non-ack request during ringing: {}", req))?,
                                         }
-                                        _ => Err("got unexpected response during ringing")?,
+                                        _ => Err(anyhow!("got unexpected response during ringing"))?,
                                     }
                                 },
-                                Err(e) => break State::Connected(tls_conn, Dial::Error(Box::new(e))),
+                                Err(e) => break State::Connected(tls_conn, Dial::Error(e.into())),
                             },
                         }
                     }
@@ -256,7 +256,7 @@ impl Phone {
                     loop {
                         select! {
                             _ = sleep(Duration::from_secs(1)), if (*CONTACTS).contains_key(&number) && number != self.username => {
-                                let to = (*CONTACTS).get(&number).ok_or("contact is missing after I EXPLICITLY checked it")?;
+                                let to = (*CONTACTS).get(&number).ok_or(anyhow!("contact is missing after I EXPLICITLY checked it"))?;
                                 dialog.invite(self.password.clone(), to.clone()).await?;
                                 let rtp_sock = rtp::socket::Socket::bind().await?;
                                 break State::Connected(tls_conn, Dial::DialOut(dialog, rtp_sock));
@@ -266,12 +266,12 @@ impl Phone {
                                     debug!("GOT DIG: {}", dig);
                                     number.push((dig + b'0').into());
                                 },
-                                None => break State::Connected(tls_conn, Dial::Error("dig channel died :(".into())),
+                                None => break State::Connected(tls_conn, Dial::Error(anyhow!("dig channel died :("))),
                             },
                             hook_evt = hook_ch.recv() => match hook_evt {
                                 Ok(SwitchHook::ON) => break State::Connected(tls_conn, Dial::OnHook),
                                 Ok(SwitchHook::OFF) => {},
-                                Err(e) => break State::Connected(tls_conn, Dial::Error(Box::new(e))),
+                                Err(e) => break State::Connected(tls_conn, Dial::Error(e.into())),
                             },
                         }
                     }
@@ -289,7 +289,7 @@ impl Phone {
                                 break State::Connected(tls_conn, Dial::Busy)
                             },
                             msg = tls_conn.new_msg_ch.recv() => match msg {
-                                Some(SipMessage::Request(_)) => Err("unexpected request during dial out")?,
+                                Some(SipMessage::Request(_)) => Err(anyhow!("unexpected request during dial out"))?,
                                 Some(SipMessage::Response(resp)) => match resp.status_code {
                                     rsip::StatusCode::BusyHere |
                                     rsip::StatusCode::Decline => {
@@ -301,12 +301,12 @@ impl Phone {
                                     },
                                     _ => {},
                                 },
-                                None => Err("tls conn closed")?,
+                                None => Err(anyhow!("tls conn closed"))?,
                             },
                             hook_evt = hook_ch.recv() => match hook_evt {
                                 Ok(SwitchHook::ON) => break State::Connected(tls_conn, Dial::OnHook),
-                                Ok(SwitchHook::OFF) => break State::Connected(tls_conn, Dial::Error("got off hook during dial out".into())),
-                                Err(e) => break State::Connected(tls_conn, Dial::Error(Box::new(e))),
+                                Ok(SwitchHook::OFF) => break State::Connected(tls_conn, Dial::Error(anyhow!("got off hook during dial out"))),
+                                Err(e) => break State::Connected(tls_conn, Dial::Error(e.into())),
                             },
                         }
                     }
@@ -322,7 +322,7 @@ impl Phone {
                     loop {
                         select! {
                             msg = tls_conn.new_msg_ch.recv() => match msg {
-                                Some(SipMessage::Request(_)) => Err("unexpected request during dial out")?,
+                                Some(SipMessage::Request(_)) => Err(anyhow!("unexpected request during dial out"))?,
                                 Some(SipMessage::Response(resp)) => match resp.status_code {
                                     rsip::StatusCode::OK => {
                                         dialog.ack(resp.clone()).await?;
@@ -330,12 +330,12 @@ impl Phone {
                                     },
                                     _ => {},
                                 },
-                                None => Err("tls conn closed")?,
+                                None => Err(anyhow!("tls conn closed"))?,
                             },
                             hook_evt = hook_ch.recv() => match hook_evt {
                                 Ok(SwitchHook::ON) => break State::Connected(tls_conn, Dial::OnHook),
                                 Ok(SwitchHook::OFF) => {},
-                                Err(e) => break State::Connected(tls_conn, Dial::Error(Box::new(e))),
+                                Err(e) => break State::Connected(tls_conn, Dial::Error(e.into())),
                             },
                         }
                     }
@@ -351,7 +351,7 @@ impl Phone {
                                     rsip::Method::Invite => {
                                         let req_sdp = SessionDescription::from_str(std::str::from_utf8(&req.body)?)?;
                                         let sdp_ip = {
-                                            let connection = req_sdp.connection.clone().ok_or("connection line doesn't exist")?;
+                                            let connection = req_sdp.connection.clone().ok_or(anyhow!("connection line doesn't exist"))?;
                                             connection.connection_address.base
                                         };
                                         if !rtp_sock.is_in_net(sdp_ip) {
@@ -360,9 +360,9 @@ impl Phone {
                                             match dialog.recv().await? {
                                                 SipMessage::Request(req) => match req.method() {
                                                     rsip::Method::Ack => continue,
-                                                    _ => Err(format!("got non-ack request during connected: {}", req))?,
+                                                    _ => Err(anyhow!("got non-ack request during connected: {}", req))?,
                                                 }
-                                                _ => Err("got unexpected response during connected")?,
+                                                _ => Err(anyhow!("got unexpected response during connected"))?,
                                             }
                                         }
                                         let mut sdp_port = None;
@@ -371,7 +371,7 @@ impl Phone {
                                                 sdp_port = Some(desc.media.port);
                                             }
                                         }
-                                        let sdp_port = sdp_port.ok_or("missing audio SDP port")?;
+                                        let sdp_port = sdp_port.ok_or(anyhow!("missing audio SDP port"))?;
                                         let sdp_addr = SocketAddr::new(sdp_ip, sdp_port);
 
                                         let audio_in_ch = self.audio_in_ch.subscribe();
@@ -385,20 +385,20 @@ impl Phone {
                                         match dialog.recv().await? {
                                             SipMessage::Request(req) => match req.method() {
                                                 rsip::Method::Ack => continue,
-                                                _ => Err(format!("got non-ack request during connected: {}", req))?,
+                                                _ => Err(anyhow!("got non-ack request during connected: {}", req))?,
                                             }
-                                            _ => Err("got unexpected response during connected")?,
+                                            _ => Err(anyhow!("got unexpected response during connected"))?,
                                         }
                                     },
                                     rsip::Method::Bye => {
                                         let resp = dialog.response_to(req.clone(), rsip::StatusCode::OK, vec![])?;
                                         dialog.send(resp).await?;
-                                        break State::Connected(tls_conn, Dial::Error("other party hung up".into()));
+                                        break State::Connected(tls_conn, Dial::Error(anyhow!("other party hung up")));
                                     },
-                                    _ => Err(format!("got unexpected request method during connected"))?,
+                                    _ => Err(anyhow!("got unexpected request method during connected"))?,
                                 },
-                                Some(SipMessage::Response(_)) => Err("unexpected request during connected")?,
-                                None => Err("tls conn closed")?,
+                                Some(SipMessage::Response(_)) => Err(anyhow!("unexpected request during connected"))?,
+                                None => Err(anyhow!("tls conn closed"))?,
                             },
                             hook_evt = hook_ch.recv() => match hook_evt {
                                 Ok(SwitchHook::ON) => {
@@ -407,7 +407,7 @@ impl Phone {
                                     break State::Connected(tls_conn, Dial::OnHook);
                                 },
                                 Ok(SwitchHook::OFF) => {},
-                                Err(e) => break State::Connected(tls_conn, Dial::Error(Box::new(e))),
+                                Err(e) => break State::Connected(tls_conn, Dial::Error(e.into())),
                             },
                         }
                     }
@@ -424,19 +424,19 @@ impl Phone {
                         match hook_ch.recv().await {
                             Ok(SwitchHook::ON) => break State::Connected(tls_conn, Dial::OnHook),
                             Ok(SwitchHook::OFF) => {}
-                            Err(e) => break State::Connected(tls_conn, Dial::Error(Box::new(e))),
+                            Err(e) => break State::Connected(tls_conn, Dial::Error(e.into())),
                         }
                     }
                 }
                 State::Connected(tls_conn, Dial::Error(e)) => {
-                    error!(e);
+                    error!("{:?}", e);
                     let mut hook_ch = self.hook_ch.subscribe();
 
                     loop {
                         match hook_ch.recv().await {
                             Ok(SwitchHook::ON) => break State::Connected(tls_conn, Dial::OnHook),
                             Ok(SwitchHook::OFF) => {}
-                            Err(e) => break State::Disconnected(WiFi::Error(Box::new(e))),
+                            Err(e) => break State::Disconnected(WiFi::Error(e.into())),
                         }
                     }
                 }
@@ -450,13 +450,13 @@ impl Phone {
                             match shk_evt {
                                 Ok(SwitchHook::ON) => None,
                                 Ok(SwitchHook::OFF) => Some(State::Disconnected(WiFi::Await)),
-                                Err(e) => Some(State::Disconnected(WiFi::Error(Box::new(e)))),
+                                Err(e) => Some(State::Disconnected(WiFi::Error(e.into()))),
                             }
                         }
                         has_internet = do_i_have_internet() => {
                             match has_internet {
                                 Ok(true) => {
-                                    let ip = public_ip::addr_v4().await.ok_or("no ip")?;
+                                    let ip = public_ip::addr_v4().await.ok_or(anyhow!("no ip"))?;
                                     let tls_conn =
                                         sip::tlssocket::TlsSipConn::new(ip, sip::SERVER_NAME, sip::SERVER_PORT).await?;
                                     tls_conn.dialog(self.username.clone()).await.register(self.password.clone()).await?;
@@ -474,7 +474,7 @@ impl Phone {
                             match hook_ch.recv().await {
                                 Ok(SwitchHook::ON) => {}
                                 Ok(SwitchHook::OFF) => break State::Disconnected(WiFi::Await),
-                                Err(e) => break State::Disconnected(WiFi::Error(Box::new(e))),
+                                Err(e) => break State::Disconnected(WiFi::Error(e.into())),
                             }
                         }
                     }
@@ -490,7 +490,7 @@ impl Phone {
                     select! {
                         wifi_evt = self.get_wifi_creds() => match wifi_evt {
                             Ok(_) => {
-                                let ip = public_ip::addr_v4().await.ok_or("no ip")?;
+                                let ip = public_ip::addr_v4().await.ok_or(anyhow!("no ip"))?;
                                 let tls_conn =
                                     sip::tlssocket::TlsSipConn::new(ip, sip::SERVER_NAME, sip::SERVER_PORT).await?;
                                 tls_conn.dialog(self.username.clone()).await.register(self.password.clone()).await?;
@@ -501,19 +501,19 @@ impl Phone {
                         shk_evt = hook_ch.recv() => match shk_evt {
                             Ok(SwitchHook::ON) => State::Disconnected(WiFi::OnHook),
                             Ok(SwitchHook::OFF) => State::Disconnected(WiFi::Await),
-                            Err(e) => State::Disconnected(WiFi::Error(Box::new(e))),
+                            Err(e) => State::Disconnected(WiFi::Error(e.into())),
                         },
                     }
                 }
                 State::Disconnected(WiFi::Error(e)) => {
-                    error!(e);
+                    error!("{:?}", e);
                     let mut hook_ch = self.hook_ch.subscribe();
 
                     loop {
                         match hook_ch.recv().await {
                             Ok(SwitchHook::ON) => break State::Disconnected(WiFi::OnHook),
                             Ok(SwitchHook::OFF) => {}
-                            Err(e) => break State::Disconnected(WiFi::Error(Box::new(e))),
+                            Err(e) => break State::Disconnected(WiFi::Error(e.into())),
                         }
                     }
                 }

@@ -1,9 +1,9 @@
 use std::array::from_fn;
-use std::error::Error;
 use std::f64::consts::{self, PI};
 use std::slice::Iter;
 use std::sync::LazyLock;
 
+use anyhow::Result;
 use itertools::Itertools;
 use ringbuf::storage::Heap;
 use ringbuf::traits::{Consumer, RingBuffer};
@@ -300,7 +300,7 @@ pub fn goertzelme(mut sample_channel: broadcast::Receiver<i16>) -> mpsc::Receive
     rcv_ch
 }
 
-pub fn goertzeliter(mut samples: Box<dyn Iterator<Item = i16>>) -> Result<Vec<u8>, Box<dyn Error>> {
+pub fn goertzeliter(mut samples: Box<dyn Iterator<Item = i16>>) -> Result<Vec<u8>> {
     let mut sample_idx = 0;
     let mut goertzel_idx = 0;
     let mut goertzelers: Vec<_> = (0..(CHUNK_SIZE / WINDOW_INTERVAL))
