@@ -603,7 +603,7 @@ impl Txn {
 //    }
 //}
 
-pub fn assert_resp_successful(resp: &Response) -> Result<(), Box<dyn Error>> {
+pub fn assert_status(resp: &Response) -> Result<(), Box<dyn Error>> {
     match resp.status_code.kind() {
         StatusCodeKind::Successful | StatusCodeKind::Provisional => Ok(()),
         _ => Err(format!("unsuccessful resp {}", resp.status_code).into()),
@@ -774,6 +774,24 @@ impl Dialog {
                 ],
             }],
         }
+    }
+
+    pub fn sdp_from(&self, req: Request) -> Result<SessionDescription, Box<dyn Error>> {
+        let sdp = SessionDescription::from_str(std::str::from_utf8(&req.body)?)?;
+        let sess_id = sdp.origin.sess_id;
+        Ok(self.sdp(sess_id))
+    }
+
+    pub fn sdp_response_to(
+        &mut self,
+        req: Request,
+        status_code: StatusCode,
+        sdp: SessionDescription,
+    ) -> Result<SipMessage, Box<dyn Error>> {
+        let mut resp = self.response_to(req, status_code, sdp.to_string().into_bytes())?;
+        resp.headers_mut()
+            .push(ContentType(MediaType::Sdp(vec![])).into());
+        Ok(resp)
     }
 
     pub async fn send(
@@ -987,7 +1005,7 @@ impl Dialog {
         self.send(authed_req.clone()).await?;
 
         let resp: Response = self.recv().await?.try_into()?;
-        assert_resp_successful(&resp)?;
+        assert_status(&resp)?;
 
         Ok(())
     }
@@ -1015,7 +1033,7 @@ impl Dialog {
         self.send(req).await?;
 
         let resp = self.recv().await?;
-        assert_resp_successful(&resp.try_into()?)?;
+        assert_status(&resp.try_into()?)?;
 
         Ok(())
     }
@@ -1038,6 +1056,20 @@ impl Dialog {
         }
         let cseq = resp.cseq_header()?.seq()?;
         req.cseq_header_mut()?.mut_seq(cseq)?;
+        self.send(req).await?;
+
+        Ok(())
+    }
+
+    pub async fn cancel(&mut self) -> Result<(), Box<dyn Error>> {
+        let req = self.new_request(Method::Cancel, vec![]);
+        self.send(req).await?;
+
+        Ok(())
+    }
+
+    pub async fn bye(&mut self) -> Result<(), Box<dyn Error>> {
+        let req = self.new_request(Method::Bye, vec![]);
         self.send(req).await?;
 
         Ok(())
