@@ -705,27 +705,6 @@ impl Dialog {
         })
     }
 
-    pub async fn register(&mut self, password: String) -> Result<(), Box<dyn Error>> {
-        let req = self.new_request_from_to(rsip::Method::Register, self.uri(), self.uri(), vec![]);
-        self.send(req.clone()).await?;
-
-        let resp: Response = self.recv().await?.try_into()?;
-        let www_auth = resp
-            .www_authenticate_header()
-            .ok_or("missing www auth header")?
-            .typed()?;
-
-        let mut authed_req =
-            self.new_request_from_to(rsip::Method::Register, self.uri(), self.uri(), vec![]);
-        self.add_auth_to_request(&mut authed_req, password, www_auth.opaque, www_auth.nonce);
-        self.send(authed_req.clone()).await?;
-
-        let resp: Response = self.recv().await?.try_into()?;
-        assert_resp_successful(&resp)?;
-
-        Ok(())
-    }
-
     pub fn sdp(&self, sess_id: String) -> SessionDescription {
         SessionDescription {
             version: sdp_rs::lines::Version::V0,
@@ -1009,6 +988,27 @@ impl Dialog {
         req.headers.push(Expires::from(3600).into());
     }
 
+    pub async fn register(&mut self, password: String) -> Result<(), Box<dyn Error>> {
+        let req = self.new_request_from_to(rsip::Method::Register, self.uri(), self.uri(), vec![]);
+        self.send(req.clone()).await?;
+
+        let resp: Response = self.recv().await?.try_into()?;
+        let www_auth = resp
+            .www_authenticate_header()
+            .ok_or("missing www auth header")?
+            .typed()?;
+
+        let mut authed_req =
+            self.new_request_from_to(rsip::Method::Register, self.uri(), self.uri(), vec![]);
+        self.add_auth_to_request(&mut authed_req, password, www_auth.opaque, www_auth.nonce);
+        self.send(authed_req.clone()).await?;
+
+        let resp: Response = self.recv().await?.try_into()?;
+        assert_resp_successful(&resp)?;
+
+        Ok(())
+    }
+
     pub async fn invite(&mut self, password: String, to: Uri) -> Result<(), Box<dyn Error>> {
         let sess_id = micros_since_epoch().to_string();
         let body = self.sdp(sess_id).to_string();
@@ -1031,6 +1031,29 @@ impl Dialog {
         self.send(req).await?;
 
         self.recv().await?;
+
+        Ok(())
+    }
+
+    pub async fn ack(&mut self, resp: Response) -> Result<(), Box<dyn Error>> {
+        let mut req = self.new_request(Method::Ack, vec![]);
+        for header in resp.headers.clone() {
+            match header {
+                h @ Header::ContentType(_)
+                | h @ Header::ContentLength(_)
+                | h @ Header::From(_)
+                | h @ Header::To(_) => {
+                    req.headers.push(h);
+                }
+                _ => {}
+            }
+        }
+        if resp.body.len() > 0 {
+            req.body = resp.body.clone(); // Copy over SDP
+        }
+        let cseq = resp.cseq_header()?.seq()?;
+        req.cseq_header_mut()?.mut_seq(cseq)?;
+        self.send(req).await?;
 
         Ok(())
     }
