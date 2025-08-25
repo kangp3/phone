@@ -258,7 +258,7 @@ impl Phone {
                     let mut number = String::new();
                     loop {
                         select! {
-                            _ = sleep(Duration::from_secs(1)), if (*CONTACTS).contains_key(&number) && number != (*sip::USERNAME) => {
+                            _ = sleep(Duration::from_secs(1)), if (*CONTACTS).contains_key(&number) && number != self.username => {
                                 let to = (*CONTACTS).get(&number).ok_or("contact is missing after I EXPLICITLY checked it")?;
                                 dialog.invite(self.password.clone(), to.clone()).await?;
                                 let rtp_sock = rtp::socket::Socket::bind().await?;
