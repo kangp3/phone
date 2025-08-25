@@ -302,8 +302,8 @@ impl Phone {
                         select! {
                             _ = sleep(Duration::from_secs(1)), if (*CONTACTS).contains_key(&number) && number != (*sip::USERNAME) => {
                                 let to = (*CONTACTS).get(&number).ok_or("contact is missing after I EXPLICITLY checked it")?;
-                                self.to_uri = Some(to.clone());
-                                let msg = SipMessage::Request(txn.invite_request(to.clone()));
+                                self.to_uri = Some(to.clone().uri);
+                                let msg = SipMessage::Request(txn.invite_request(to.clone().uri));
                                 txn.tx_ch.send(((*SERVER_ADDR).clone(), msg)).await?;
                                 let msg = txn_rx_ch.recv().await?;
                                 match msg {
@@ -311,7 +311,7 @@ impl Phone {
                                     SipMessage::Response(resp) => {
                                         let auth_header = resp.www_authenticate_header().ok_or("no www auth header")?.typed()?;
                                         let msg = SipMessage::Request({
-                                            let mut req = txn.invite_request(to.clone());
+                                            let mut req = txn.invite_request(to.clone().uri);
                                             txn.add_auth_to_request(&mut req, auth_header.opaque, auth_header.nonce);
                                             req
                                         });

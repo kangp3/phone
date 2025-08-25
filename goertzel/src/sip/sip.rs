@@ -605,8 +605,20 @@ impl Txn {
 
 pub fn assert_resp_successful(resp: &Response) -> Result<(), Box<dyn Error>> {
     match resp.status_code.kind() {
-        StatusCodeKind::Successful => Ok(()),
+        StatusCodeKind::Successful | StatusCodeKind::Provisional => Ok(()),
         _ => Err(format!("unsuccessful resp {}", resp.status_code).into()),
+    }
+}
+
+fn uri(user: String, host_with_port: HostWithPort) -> Uri {
+    Uri {
+        scheme: Some(Scheme::Sips),
+        auth: Some(Auth {
+            user,
+            password: None,
+        }),
+        host_with_port,
+        ..Default::default()
     }
 }
 
@@ -622,10 +634,10 @@ pub struct Dialog {
     username: String,
 
     cseq: u32,
-    pub call_id: CallId,
 
-    from_tag: Tag,
-    to_tag: Option<Tag>,
+    pub call_id: CallId,
+    from: From,
+    to: Option<To>,
 
     rng: StdRng,
 }
@@ -642,8 +654,12 @@ impl Dialog {
         let mut rng = StdRng::from_rng(&mut rand::rng());
         let call_id = CallId::from(format!("{}/{}", ms_since_epoch(), rand_chars(&mut rng, 16)));
 
-        let from_tag = rand_chars(&mut rng, 16).into();
-        let to_tag = None;
+        let from = From {
+            display_name: Some(username.clone()),
+            uri: uri(username.clone(), server_host.clone()),
+            params: vec![],
+        }
+        .with_tag(rand_chars(&mut rng, 16).into());
 
         Dialog {
             tx_ch,
@@ -658,8 +674,8 @@ impl Dialog {
             cseq: 0,
             call_id,
 
-            from_tag,
-            to_tag,
+            from,
+            to: None,
 
             rng,
         }
@@ -677,13 +693,12 @@ impl Dialog {
 
         let call_id = msg.call_id_header()?.clone();
         let cseq = msg.cseq_header()?.seq()?;
-        let from_tag = msg.from_header()?.tag()?.ok_or("missing from tag")?;
-        let to_header = msg.to_header()?.typed()?;
-        let username = to_header.uri.user().ok_or("missing to user")?.to_string();
-        let to_tag = to_header
-            .tag()
-            .unwrap_or(&rand_chars(&mut rng, 16).into())
-            .to_owned();
+        let from = msg.from_header()?.typed()?;
+        let to = msg
+            .to_header()?
+            .typed()?
+            .with_tag(rand_chars(&mut rng, 16).into());
+        let username = to.uri.user().ok_or("missing to user")?.to_string();
 
         Ok(Dialog {
             tx_ch,
@@ -698,8 +713,8 @@ impl Dialog {
             cseq,
             call_id,
 
-            from_tag: from_tag,
-            to_tag: Some(to_tag),
+            from,
+            to: Some(to),
 
             rng,
         })
@@ -785,18 +800,6 @@ impl Dialog {
         Ok(msg)
     }
 
-    fn uri(&self) -> Uri {
-        Uri {
-            scheme: Some(Scheme::Sips),
-            auth: Some(Auth {
-                user: self.username.clone(),
-                password: None,
-            }),
-            host_with_port: self.server_host.clone(),
-            ..Default::default()
-        }
-    }
-
     fn contact(&self) -> Contact {
         Contact {
             display_name: Some(self.username.clone()),
@@ -854,6 +857,10 @@ impl Dialog {
         headers.push(UserAgent::from(format!("{}/{}", USER_AGENT, UA_VERSION)).into());
         headers.push(self.call_id.clone().into());
         headers.push(self.contact().into());
+        headers.push(self.from.clone().into());
+        if let Some(to) = &self.to {
+            headers.push(to.clone().into());
+        }
         headers.push(MaxForwards::from(MAX_FORWARDS).into());
         headers.push(ContentLength::from(body.len() as u32).into());
 
@@ -870,35 +877,18 @@ impl Dialog {
         }
     }
 
-    pub fn new_request_from_to(
-        &mut self,
-        method: Method,
-        from: Uri,
-        to: Uri,
-        body: Vec<u8>,
-    ) -> Request {
-        let mut req = self.new_request(method, body);
-        req.headers.push(
-            From {
-                display_name: None,
-                uri: from,
-                params: vec![self.from_tag.clone().into()],
-            }
-            .into(),
-        );
-        req.headers.push(
-            To {
-                display_name: None,
-                uri: to,
-                params: vec![self.to_tag.clone()]
-                    .into_iter()
-                    .filter_map(|t| t.map(|t| Param::Tag(t)))
-                    .collect(),
-            }
-            .into(),
-        );
-
-        req
+    fn new_register_request(&mut self) -> Result<Request, Box<dyn Error>> {
+        let mut req = self.new_request(rsip::Method::Register, vec![]);
+        let from_header = req.from_header()?.typed()?;
+        // Register should only run on the start of a dialog, so To hasn't been set.
+        // It should be set with the same URI as the From, but without a tag.
+        let to_header = To {
+            display_name: from_header.display_name,
+            uri: from_header.uri,
+            params: vec![],
+        };
+        req.headers_mut().push(to_header.into());
+        Ok(req)
     }
 
     pub fn response_to(
@@ -919,15 +909,9 @@ impl Dialog {
                 ref h @ Header::To(ref to) => match to.tag()? {
                     Some(_) => headers.push(h.clone()),
                     None => {
-                        let tag = match &self.to_tag {
-                            Some(tag) => tag.clone(),
-                            None => {
-                                let tag: Tag = rand_chars(&mut self.rng, 16).into();
-                                self.to_tag = Some(tag.clone());
-                                tag
-                            }
-                        };
-                        headers.push(Header::To(to.clone().with_tag(tag)?));
+                        let to = to.typed()?.with_tag(rand_chars(&mut self.rng, 16).into());
+                        self.to = Some(to.clone());
+                        headers.push(to.into());
                     }
                 },
                 _ => {}
@@ -989,8 +973,8 @@ impl Dialog {
     }
 
     pub async fn register(&mut self, password: String) -> Result<(), Box<dyn Error>> {
-        let req = self.new_request_from_to(rsip::Method::Register, self.uri(), self.uri(), vec![]);
-        self.send(req.clone()).await?;
+        let req = self.new_register_request()?;
+        self.send(req).await?;
 
         let resp: Response = self.recv().await?.try_into()?;
         let www_auth = resp
@@ -998,8 +982,7 @@ impl Dialog {
             .ok_or("missing www auth header")?
             .typed()?;
 
-        let mut authed_req =
-            self.new_request_from_to(rsip::Method::Register, self.uri(), self.uri(), vec![]);
+        let mut authed_req = self.new_register_request()?;
         self.add_auth_to_request(&mut authed_req, password, www_auth.opaque, www_auth.nonce);
         self.send(authed_req.clone()).await?;
 
@@ -1009,12 +992,12 @@ impl Dialog {
         Ok(())
     }
 
-    pub async fn invite(&mut self, password: String, to: Uri) -> Result<(), Box<dyn Error>> {
+    pub async fn invite(&mut self, password: String, to: To) -> Result<(), Box<dyn Error>> {
         let sess_id = micros_since_epoch().to_string();
         let body = self.sdp(sess_id).to_string();
-        let mut req =
-            self.new_request_from_to(Method::Invite, self.uri(), to.clone(), body.clone().into());
-        req.uri = to.clone();
+        let mut req = self.new_request(Method::Invite, body.clone().into());
+        req.uri = to.clone().uri;
+        req.headers.push(to.clone().into());
         req.headers.push(ContentType(MediaType::Sdp(vec![])).into());
         self.send(req).await?;
 
@@ -1024,13 +1007,15 @@ impl Dialog {
             .ok_or("missing www auth header")?
             .typed()?;
 
-        let mut req = self.new_request_from_to(Method::Invite, self.uri(), to.clone(), body.into());
-        req.uri = to;
+        let mut req = self.new_request(Method::Invite, body.into());
+        req.uri = to.clone().uri;
+        req.headers.push(to.into());
         req.headers.push(ContentType(MediaType::Sdp(vec![])).into());
         self.add_auth_to_request(&mut req, password, www_auth.opaque, www_auth.nonce);
         self.send(req).await?;
 
-        self.recv().await?;
+        let resp = self.recv().await?;
+        assert_resp_successful(&resp.try_into()?)?;
 
         Ok(())
     }
