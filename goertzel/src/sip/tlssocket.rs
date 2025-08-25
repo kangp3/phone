@@ -3,11 +3,12 @@ use std::error::Error;
 use std::net::Ipv4Addr;
 use std::sync::Arc;
 
-use rsip::prelude::{HeadersExt, ToTypedHeader, UntypedHeader};
+use rsip::prelude::{HasHeaders, HeadersExt, ToTypedHeader, UntypedHeader};
+use rsip::{header_opt, Header};
 use rsip::{HostWithPort, SipMessage};
 use rustls::pki_types::ServerName;
 use rustls::RootCertStore;
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::net::TcpStream;
 use tokio::sync::{mpsc, RwLock};
 use tokio_rustls::TlsConnector;
@@ -68,37 +69,50 @@ impl TlsSipConn {
         let dialogs_ref = dialogs.clone();
         let new_msg_send_ch = new_msg_send_ch.clone();
         tokio::spawn(and_log_err("tls sip recv", async move {
-            let mut lines = BufReader::new(recv_stream).lines();
-            let mut msg_str = String::new();
-            while let Some(line) = lines.next_line().await? {
-                msg_str.push_str(&line);
-                msg_str.push_str("\r\n");
-                if line.is_empty() {
-                    // TODO: Just emit the message and build a layer that
-                    // consumes SIP messages and routes them to dialogs
-                    let msg = SipMessage::try_from(msg_str.clone())?;
-                    let call_id = msg.call_id_header()?.value().to_string();
-
-                    let rx_send_ch = {
-                        let dialogs_handle = dialogs_ref.read().await;
-                        if let Some(dialog) = dialogs_handle.get(&call_id) {
-                            (*dialog).clone()
-                        } else {
-                            debug!(
-                                user=%msg.to_header()?.typed()?.uri.auth.ok_or("missing auth in uri")?.user,
-                                call_id=call_id,
-                                msg=%msg.clone().to_string().lines().next().unwrap_or("empty"),
-                                "SIP New Recv",
-                            );
-                            new_msg_send_ch.clone()
-                        }
-                    };
-
-                    rx_send_ch.send(msg).await?;
-                    msg_str.clear();
+            let mut reader = BufReader::new(recv_stream);
+            loop {
+                let mut lines = (&mut reader).lines();
+                let mut msg_str = String::new();
+                while let Some(line) = lines.next_line().await? {
+                    msg_str.push_str(&line);
+                    msg_str.push_str("\r\n");
+                    if line.is_empty() {
+                        break;
+                    }
                 }
+                // TODO: Just emit the message and build a layer that
+                // consumes SIP messages and routes them to dialogs
+                let mut msg = SipMessage::try_from(msg_str.clone())?;
+                let call_id = msg.call_id_header()?.value().to_string();
+                let content_length = match header_opt!(msg.headers().iter(), Header::ContentLength)
+                {
+                    Some(h) => h.length()?.try_into()?,
+                    None => 0,
+                };
+                if content_length > 0 {
+                    let mut buf = vec![0; content_length];
+                    reader.read_exact(&mut buf).await?;
+                    msg.body_mut().extend_from_slice(&buf);
+                }
+
+                let rx_send_ch = {
+                    let dialogs_handle = dialogs_ref.read().await;
+                    if let Some(dialog) = dialogs_handle.get(&call_id) {
+                        (*dialog).clone()
+                    } else {
+                        debug!(
+                            user=%msg.to_header()?.typed()?.uri.auth.ok_or("missing auth in uri")?.user,
+                            call_id=call_id,
+                            msg=%msg.clone().to_string().lines().next().unwrap_or("empty"),
+                            "SIP New Recv",
+                        );
+                        new_msg_send_ch.clone()
+                    }
+                };
+
+                rx_send_ch.send(msg).await?;
+                msg_str.clear();
             }
-            Err("broke out of the lines loop".into()) // TODO: Maybe retry on this error
         }));
 
         tokio::spawn(and_log_err("tls sip send", async move {
