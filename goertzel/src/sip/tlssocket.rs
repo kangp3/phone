@@ -3,7 +3,7 @@ use std::error::Error;
 use std::net::Ipv4Addr;
 use std::sync::Arc;
 
-use rsip::prelude::{HeadersExt, UntypedHeader};
+use rsip::prelude::{HeadersExt, ToTypedHeader, UntypedHeader};
 use rsip::{HostWithPort, SipMessage};
 use rustls::pki_types::ServerName;
 use rustls::RootCertStore;
@@ -11,7 +11,7 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::TcpStream;
 use tokio::sync::{mpsc, RwLock};
 use tokio_rustls::TlsConnector;
-use tracing::warn;
+use tracing::{debug, warn};
 use uuid::Uuid;
 
 use crate::asyncutil::and_log_err;
@@ -84,6 +84,12 @@ impl TlsSipConn {
                         if let Some(dialog) = dialogs_handle.get(&call_id) {
                             (*dialog).clone()
                         } else {
+                            debug!(
+                                user=%msg.to_header()?.typed()?.uri.auth.ok_or("missing auth in uri")?.user,
+                                call_id=call_id,
+                                msg=%msg.clone().to_string().lines().next().unwrap_or("empty"),
+                                "SIP New Recv",
+                            );
                             new_msg_send_ch.clone()
                         }
                     };
@@ -147,7 +153,6 @@ impl TlsSipConn {
             rx_recv_ch,
             &msg,
         )?;
-        rx_send_ch.send(msg.clone()).await?;
         {
             let mut dialogs_handle = self.dialogs.write().await;
             dialogs_handle.insert(dialog.call_id.value().to_string(), rx_send_ch);
