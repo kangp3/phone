@@ -2,7 +2,6 @@ use std::collections::HashMap;
 use std::error::Error;
 use std::net::Ipv4Addr;
 use std::sync::Arc;
-use std::time::Duration;
 
 use rsip::prelude::{HeadersExt, UntypedHeader};
 use rsip::{HostWithPort, SipMessage};
@@ -10,9 +9,9 @@ use rustls::pki_types::ServerName;
 use rustls::RootCertStore;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::TcpStream;
-use tokio::sync::{broadcast, mpsc, RwLock};
+use tokio::sync::{mpsc, RwLock};
 use tokio_rustls::TlsConnector;
-use tracing::{debug, warn};
+use tracing::warn;
 use uuid::Uuid;
 
 use crate::asyncutil::and_log_err;
@@ -29,19 +28,21 @@ pub struct TlsSipConn {
     pub port: u16,
 
     pub tx_ch: mpsc::Sender<SipMessage>,
-    pub dialog_ch: broadcast::Receiver<Dialog>,
+    pub new_msg_ch: mpsc::Receiver<SipMessage>,
 
-    dialogs: Arc<RwLock<HashMap<String, Dialog>>>,
+    dialogs: Arc<RwLock<HashMap<String, mpsc::Sender<SipMessage>>>>,
 }
 
 impl TlsSipConn {
     pub async fn new(client_ip: Ipv4Addr, host: &str, port: u16) -> Result<Self, Box<dyn Error>> {
         let sip_instance_uuid = Uuid::new_v4();
 
-        let dialogs = Arc::new(RwLock::new(HashMap::<String, Dialog>::new()));
+        let dialogs = Arc::new(RwLock::new(
+            HashMap::<String, mpsc::Sender<SipMessage>>::new(),
+        ));
 
         let (send_send_ch, mut send_recv_ch) = mpsc::channel(MESSAGE_CHANNEL_SIZE);
-        let (dialog_send_ch, dialog_recv_ch) = broadcast::channel(MESSAGE_CHANNEL_SIZE);
+        let (new_msg_send_ch, new_msg_recv_ch) = mpsc::channel(MESSAGE_CHANNEL_SIZE);
 
         let conn = TlsSipConn {
             client_ip,
@@ -51,7 +52,7 @@ impl TlsSipConn {
             port,
 
             tx_ch: send_send_ch.clone(),
-            dialog_ch: dialog_recv_ch,
+            new_msg_ch: new_msg_recv_ch,
 
             dialogs: dialogs.clone(),
         };
@@ -64,10 +65,8 @@ impl TlsSipConn {
         let (recv_stream, mut send_stream) = tokio::io::split(stream);
 
         // TODO: Drop handlers for these coroutines
-        let host_with_port = HostWithPort::from((host, port));
         let dialogs_ref = dialogs.clone();
-        let tx_ch = send_send_ch.clone();
-        let dialog_send_ch = dialog_send_ch.clone();
+        let new_msg_send_ch = new_msg_send_ch.clone();
         tokio::spawn(and_log_err("tls sip recv", async move {
             let mut lines = BufReader::new(recv_stream).lines();
             let mut msg_str = String::new();
@@ -81,31 +80,15 @@ impl TlsSipConn {
                     let call_id = msg.call_id_header()?.value().to_string();
 
                     let rx_send_ch = {
-                        let mut dialogs_handle = dialogs_ref.write().await;
+                        let dialogs_handle = dialogs_ref.read().await;
                         if let Some(dialog) = dialogs_handle.get(&call_id) {
-                            (*dialog).rx_ch.clone()
+                            (*dialog).clone()
                         } else {
-                            debug!(
-                                call_id=%call_id,
-                                msg=%msg.clone().to_string().lines().next().unwrap_or("empty"),
-                                "SIP New Dialog",
-                            );
-                            let (rx_send_ch, _) = broadcast::channel(MESSAGE_CHANNEL_SIZE);
-                            let new_dialog = Dialog::from_request(
-                                host_with_port.clone(),
-                                client_ip.clone(),
-                                sip_instance_uuid,
-                                tx_ch.clone(),
-                                rx_send_ch.clone(),
-                                &msg,
-                            )?;
-                            dialogs_handle.insert(call_id, new_dialog.to_owned());
-                            dialog_send_ch.send(new_dialog)?;
-                            rx_send_ch
+                            new_msg_send_ch.clone()
                         }
                     };
 
-                    rx_send_ch.send(msg)?;
+                    rx_send_ch.send(msg).await?;
                     msg_str.clear();
                 }
             }
@@ -138,20 +121,38 @@ impl TlsSipConn {
     pub async fn dialog(&self, username: String) -> Dialog {
         let host_with_port = HostWithPort::from((self.host.clone(), self.port));
 
-        let (rx_send_ch, _) = broadcast::channel(MESSAGE_CHANNEL_SIZE);
+        let (rx_send_ch, rx_recv_ch) = mpsc::channel(MESSAGE_CHANNEL_SIZE);
         let dialog = Dialog::new(
             host_with_port,
             self.client_ip,
             self.sip_instance_uuid,
             username,
             self.tx_ch.clone(),
-            rx_send_ch,
+            rx_recv_ch,
         );
         {
             let mut dialogs_handle = self.dialogs.write().await;
-            dialogs_handle.insert(dialog.call_id.value().to_string(), dialog.to_owned());
+            dialogs_handle.insert(dialog.call_id.value().to_string(), rx_send_ch);
         }
         dialog
+    }
+
+    pub async fn dialog_from_req(&self, msg: &SipMessage) -> Result<Dialog, Box<dyn Error>> {
+        let (rx_send_ch, rx_recv_ch) = mpsc::channel(MESSAGE_CHANNEL_SIZE);
+        let dialog = Dialog::from_request(
+            (self.host.clone(), self.port).into(),
+            self.client_ip,
+            self.sip_instance_uuid,
+            self.tx_ch.clone(),
+            rx_recv_ch,
+            &msg,
+        )?;
+        rx_send_ch.send(msg.clone()).await?;
+        {
+            let mut dialogs_handle = self.dialogs.write().await;
+            dialogs_handle.insert(dialog.call_id.value().to_string(), rx_send_ch);
+        }
+        Ok(dialog)
     }
 }
 

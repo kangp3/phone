@@ -31,8 +31,13 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
     dialog_1102.invite(password.clone(), to.clone()).await?;
 
     println!("Waiting for new dialog");
-    let new_dialog = tls_conn.dialog_ch.recv().await?;
+    let new_msg = tls_conn
+        .new_msg_ch
+        .recv()
+        .await
+        .ok_or("error getting new msg")?;
     println!("Got new dialog");
+    let mut new_dialog = tls_conn.dialog_from_req(&new_msg).await?;
     new_dialog.recv().await?;
 
     Ok(())

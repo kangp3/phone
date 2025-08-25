@@ -610,10 +610,10 @@ pub fn assert_resp_successful(resp: &Response) -> Result<(), Box<dyn Error>> {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct Dialog {
     pub tx_ch: mpsc::Sender<SipMessage>,
-    pub rx_ch: broadcast::Sender<SipMessage>,
+    pub rx_ch: mpsc::Receiver<SipMessage>,
 
     server_host: HostWithPort,
     client_ip: Ipv4Addr,
@@ -637,7 +637,7 @@ impl Dialog {
         sip_instance_uuid: Uuid,
         username: String,
         tx_ch: mpsc::Sender<SipMessage>,
-        rx_ch: broadcast::Sender<SipMessage>,
+        rx_ch: mpsc::Receiver<SipMessage>,
     ) -> Self {
         let mut rng = StdRng::from_rng(&mut rand::rng());
         let call_id = CallId::from(format!("{}/{}", ms_since_epoch(), rand_chars(&mut rng, 16)));
@@ -670,7 +670,7 @@ impl Dialog {
         client_ip: Ipv4Addr,
         sip_instance_uuid: Uuid,
         tx_ch: mpsc::Sender<SipMessage>,
-        rx_ch: broadcast::Sender<SipMessage>,
+        rx_ch: mpsc::Receiver<SipMessage>,
         msg: &SipMessage,
     ) -> Result<Self, Box<dyn Error>> {
         let mut rng = StdRng::from_rng(&mut rand::rng());
@@ -795,8 +795,8 @@ impl Dialog {
         self.tx_ch.send((msg).into()).await
     }
 
-    pub async fn recv(&self) -> Result<SipMessage, broadcast::error::RecvError> {
-        let msg = self.rx_ch.subscribe().recv().await?;
+    pub async fn recv(&mut self) -> Result<SipMessage, Box<dyn Error>> {
+        let msg = self.rx_ch.recv().await.ok_or("failed recv dialog rx")?;
         debug!(
             user=%self.username,
             call_id=%self.call_id.value().to_string(),
