@@ -256,7 +256,7 @@ impl Dialog {
 
     pub async fn send(
         &self,
-        msg: (impl Into<SipMessage> + Clone),
+        msg: impl Into<SipMessage> + Clone,
     ) -> Result<(), mpsc::error::SendError<SipMessage>> {
         debug!(
             user=%self.username,
