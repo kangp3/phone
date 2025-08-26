@@ -88,13 +88,31 @@ sudo alsactl store
 sudo nmcli connection delete 'Recurse Center'; sudo reboot
 ```
 
-### Install cross-compiler
+### Cross-compile
+Install some cross-compilation dependencies
 ```
 brew tap messense/macos-cross-toolchains
 brew install arm-unknown-linux-gnueabihf
+rustup target add arm-unknown-linux-gnueabihf
+brew install cmake  # dependency of aws-lc-sys
+cargo install --force --locked bindgen-cli  # dependency of aws-lc-sys
 ```
+Need to pass the sysroot in order to get around this error:
 ```
-cargo build --release --target=arm-unknown-linux-gnueabihf
+  --- stderr
+  /Users/peter/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/aws-lc-sys-0.30.0/aws-lc/include/openssl/base.h:61:10: fatal error: 'stdlib.h' file not found
+
+  thread 'main' panicked at /Users/peter/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/aws-lc-sys-0.30.0/builder/sys_bindgen.rs:110:10:
+  Unable to generate bindings.: ClangDiagnostic("/Users/peter/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/aws-lc-sys-0.30.0/aws-lc/include/openssl/base.h:61:10: fatal error: 'stdlib.h' file not found\n")
+  note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+```
+Got some help from these sources:
+- https://stackoverflow.com/questions/65392271/macos-big-sur-11-1-cant-find-stdlib-h-w
+- https://github.com/rust-lang/rust-bindgen?tab=readme-ov-file#environment-variables
+- https://aws.github.io/aws-lc-rs/requirements/linux.html#linux-requirements
+- https://github.com/apache/opendal/pull/5004/files
+```
+BINDGEN_EXTRA_CLANG_ARGS=--sysroot="$(xcrun --sdk macosx --show-sdk-path)" cargo build --release --target=arm-unknown-linux-gnueabihf
 ```
 
 ### PBX

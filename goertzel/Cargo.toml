@@ -53,6 +53,7 @@ uuid = { version = "1.18.0", features = ["v4"] }
 anyhow = { version = "1.0.99", features = ["backtrace"] }
 
 [target.arm-unknown-linux-gnueabihf.dependencies]
+aws-lc-rs = { version = "1.13.3", features = ["bindgen"] }
 rppal = "0.19.0"
 
 [target.'cfg(not(target_os = "none"))'.dependencies]
