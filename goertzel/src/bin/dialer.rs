@@ -18,12 +18,12 @@ pub async fn main() -> Result<()> {
     let tls_conn = tlssocket::TlsSipConn::new(ip, SERVER_NAME, SERVER_PORT).await?;
 
     let password = env::var("SIP_PASSWORD")?;
-    let mut dialog = tls_conn.dialog(String::from("1102")).await;
+    let mut dialog = tls_conn.dialog(String::from("1103")).await;
     dialog.register(password.clone()).await?;
 
-    let mut dialog = tls_conn.dialog(String::from("1102")).await;
+    let mut dialog = tls_conn.dialog(String::from("1103")).await;
     let to = (*CONTACTS)
-        .get("1103")
+        .get("1102")
         .ok_or(anyhow!("contact is missing after I EXPLICITLY checked it"))?;
     dialog.invite(password.clone(), to.clone()).await?;
 
