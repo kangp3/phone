@@ -46,9 +46,9 @@ pub enum Dial {
 pub struct Phone {
     pub state: State,
 
-    #[cfg(target_os = "macos")]
+    #[cfg(not(target_arch = "arm"))]
     _shk_pin: (),
-    #[cfg(target_os = "linux")]
+    #[cfg(target_arch = "arm")]
     _shk_pin: rppal::gpio::InputPin,
 
     pub audio_in_ch: broadcast::Sender<i16>,
@@ -87,9 +87,9 @@ impl Phone {
             None
         };
 
-        #[cfg(target_os = "macos")]
+        #[cfg(not(target_arch = "arm"))]
         let is_on_hook = true;
-        #[cfg(target_os = "linux")]
+        #[cfg(target_arch = "arm")]
         let is_on_hook = shk_pin.is_low();
 
         let state = match (tls_conn, is_on_hook) {
@@ -144,7 +144,7 @@ impl Phone {
         }
         info!("{}", &pass);
 
-        #[cfg(target_os = "linux")]
+        #[cfg(target_arch = "arm")]
         let status = Command::new("nmcli")
             .args(&["--wait", "20"])
             .args(&["device", "wifi"])
@@ -154,7 +154,7 @@ impl Phone {
             .spawn()?
             .wait()
             .await?;
-        #[cfg(target_os = "macos")]
+        #[cfg(not(target_arch = "arm"))]
         let status = Command::new("networksetup")
             .arg("-setairportnetwork")
             .arg("en0")

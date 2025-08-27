@@ -115,6 +115,19 @@ Got some help from these sources:
 BINDGEN_EXTRA_CLANG_ARGS=--sysroot="$(xcrun --sdk macosx --show-sdk-path)" cargo build --release --target=arm-unknown-linux-gnueabihf
 ```
 
+### Cross-compile dialbutton
+Install some cross-compilation dependencies
+```
+brew tap messense/macos-cross-toolchains
+brew install x86_64-unknown-linux-gnu
+export CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=x86_64-linux-gnu-gcc
+```
+Helpful resources:
+- https://github.com/messense/homebrew-macos-cross-toolchains
+```
+PATH="$PATH:/opt/homebrew/Cellar/x86_64-unknown-linux-gnu/13.3.0/bin" cargo build --release --target x86_64-unknown-linux-gnu --features http --bin dialbutton
+```
+
 ### PBX
 ```
 wget https://downloads.asterisk.org/pub/telephony/asterisk/asterisk-20-current.tar.gz

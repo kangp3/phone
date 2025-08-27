@@ -28,6 +28,10 @@ name = "dialer"
 [[bin]]
 name = "dialed"
 
+[[bin]]
+name = "dialbutton"
+required-features = ["http"]
+
 [patch.crates-io]
 alsa-sys = { path = 'alsa-sys' }
 
@@ -51,6 +55,7 @@ public-ip = { version = "0.2.2", default-features = false, features = ["opendns"
 tokio-rustls = "0.26.2"
 uuid = { version = "1.18.0", features = ["v4"] }
 anyhow = { version = "1.0.99", features = ["backtrace"] }
+axum = { version = "0.8.4", optional = true, features = ["macros"] }
 
 [target.arm-unknown-linux-gnueabihf.dependencies]
 aws-lc-rs = { version = "1.13.3", features = ["bindgen"] }
@@ -61,3 +66,4 @@ ctrlc = "3.4.5"
 
 [features]
 wav = ["dep:hound", "dep:pico-args"]
+http = ["dep:axum"]
