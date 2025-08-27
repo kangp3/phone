@@ -354,17 +354,6 @@ impl Phone {
                                             let connection = req_sdp.connection.clone().ok_or(anyhow!("connection line doesn't exist"))?;
                                             connection.connection_address.base
                                         };
-                                        if !rtp_sock.is_in_net(sdp_ip) {
-                                            let resp = dialog.response_to(req.clone(), rsip::StatusCode::NotAcceptableHere, vec![])?;
-                                            dialog.send(resp).await?;
-                                            match dialog.recv().await? {
-                                                SipMessage::Request(req) => match req.method() {
-                                                    rsip::Method::Ack => continue,
-                                                    _ => Err(anyhow!("got non-ack request during connected: {}", req))?,
-                                                }
-                                                _ => Err(anyhow!("got unexpected response during connected"))?,
-                                            }
-                                        }
                                         let mut sdp_port = None;
                                         for desc in &req_sdp.media_descriptions {
                                             if desc.media.media == MediaType::Audio {
@@ -379,8 +368,46 @@ impl Phone {
                                         rtp_sock.connect(sdp_addr, audio_in_ch, audio_out_ch).await?;
 
                                         let sdp = dialog.sdp_from(req.clone())?;
-                                        let resp = dialog.sdp_response_to(req, rsip::StatusCode::OK, sdp)?;
-                                        dialog.send(resp).await?;
+                                        let resp = dialog.sdp_response_to(req.clone(), rsip::StatusCode::OK, sdp)?;
+                                        dialog.send(resp.clone()).await?;
+
+                                        match dialog.recv().await? {
+                                            SipMessage::Request(req) => match req.method() {
+                                                rsip::Method::Ack => continue,
+                                                _ => Err(anyhow!("got non-ack request during connected: {}", req))?,
+                                            }
+                                            _ => Err(anyhow!("got unexpected response during connected"))?,
+                                        }
+                                    },
+                                    _ => Err(anyhow!("got unexpected request method during connected"))?,
+                                },
+                                Some(SipMessage::Response(_)) => Err(anyhow!("unexpected response during connected"))?,
+                                None => Err(anyhow!("tls conn closed"))?,
+                            },
+                            msg = dialog.recv() => match msg {
+                                Ok(SipMessage::Request(req)) => match req.method {
+                                    rsip::Method::Invite => {
+                                        let req_sdp = SessionDescription::from_str(std::str::from_utf8(&req.body)?)?;
+                                        let sdp_ip = {
+                                            let connection = req_sdp.connection.clone().ok_or(anyhow!("connection line doesn't exist"))?;
+                                            connection.connection_address.base
+                                        };
+                                        let mut sdp_port = None;
+                                        for desc in &req_sdp.media_descriptions {
+                                            if desc.media.media == MediaType::Audio {
+                                                sdp_port = Some(desc.media.port);
+                                            }
+                                        }
+                                        let sdp_port = sdp_port.ok_or(anyhow!("missing audio SDP port"))?;
+                                        let sdp_addr = SocketAddr::new(sdp_ip, sdp_port);
+
+                                        let audio_in_ch = self.audio_in_ch.subscribe();
+                                        let audio_out_ch = self.audio_out_ch.clone();
+                                        rtp_sock.connect(sdp_addr, audio_in_ch, audio_out_ch).await?;
+
+                                        let sdp = dialog.sdp_from(req.clone())?;
+                                        let resp = dialog.sdp_response_to(req.clone(), rsip::StatusCode::OK, sdp)?;
+                                        dialog.send(resp.clone()).await?;
 
                                         match dialog.recv().await? {
                                             SipMessage::Request(req) => match req.method() {
@@ -397,8 +424,8 @@ impl Phone {
                                     },
                                     _ => Err(anyhow!("got unexpected request method during connected"))?,
                                 },
-                                Some(SipMessage::Response(_)) => Err(anyhow!("unexpected request during connected"))?,
-                                None => Err(anyhow!("tls conn closed"))?,
+                                Ok(SipMessage::Response(_)) => Err(anyhow!("unexpected response during connected"))?,
+                                Err(e) => Err(e)?,
                             },
                             hook_evt = hook_ch.recv() => match hook_evt {
                                 Ok(SwitchHook::ON) => {

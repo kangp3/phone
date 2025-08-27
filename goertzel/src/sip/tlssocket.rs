@@ -12,7 +12,7 @@ use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::net::TcpStream;
 use tokio::sync::{mpsc, RwLock};
 use tokio_rustls::TlsConnector;
-use tracing::{debug, warn};
+use tracing::{debug, trace, warn};
 use uuid::Uuid;
 
 use crate::asyncutil::and_log_err;
@@ -74,6 +74,10 @@ impl TlsSipConn {
                 let mut lines = (&mut reader).lines();
                 let mut msg_str = String::new();
                 while let Some(line) = lines.next_line().await? {
+                    trace!(
+                        line=%line,
+                        "SIP New Recv line"
+                    );
                     msg_str.push_str(&line);
                     msg_str.push_str("\r\n");
                     if line.is_empty() {
@@ -102,7 +106,7 @@ impl TlsSipConn {
                     } else {
                         debug!(
                             user=%msg.to_header()?.typed()?.uri.auth.ok_or(anyhow!("missing auth in uri"))?.user,
-                            call_id=call_id,
+                            call_id=%call_id,
                             msg=%msg.clone().to_string().lines().next().unwrap_or("empty"),
                             "SIP New Recv",
                         );

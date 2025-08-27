@@ -20,7 +20,7 @@ use rsip::{
 };
 use sdp_rs::{MediaDescription, SessionDescription};
 use tokio::sync::mpsc;
-use tracing::debug;
+use tracing::{debug, trace};
 use uuid::Uuid;
 use vec1::Vec1;
 
@@ -79,6 +79,22 @@ fn uri(user: String, host_with_port: HostWithPort) -> Uri {
         }),
         host_with_port,
         ..Default::default()
+    }
+}
+
+fn flip_from(from: From) -> To {
+    To {
+        display_name: from.display_name,
+        uri: from.uri,
+        params: from.params,
+    }
+}
+
+fn flip_to(to: To) -> From {
+    From {
+        display_name: to.display_name,
+        uri: to.uri,
+        params: to.params,
     }
 }
 
@@ -173,8 +189,8 @@ impl Dialog {
             cseq,
             call_id,
 
-            from,
-            to: Some(to),
+            from: flip_to(to),
+            to: Some(flip_from(from)),
 
             rng,
         })
@@ -255,6 +271,12 @@ impl Dialog {
     }
 
     pub async fn send(&self, msg: impl Into<SipMessage> + Clone) -> Result<()> {
+        trace!(
+            user=%self.username,
+            call_id=%self.call_id.value().to_string(),
+            msg=%msg.clone().into().to_string(),
+            "SIP Send lines",
+        );
         debug!(
             user=%self.username,
             call_id=%self.call_id.value().to_string(),
@@ -271,6 +293,12 @@ impl Dialog {
             .recv()
             .await
             .ok_or(anyhow!("failed recv dialog rx"))?;
+        trace!(
+            user=%self.username,
+            call_id=%self.call_id.value().to_string(),
+            msg=%msg.clone().to_string(),
+            "SIP Recv lines",
+        );
         debug!(
             user=%self.username,
             call_id=%self.call_id.value().to_string(),
@@ -386,9 +414,10 @@ impl Dialog {
                 | h @ Header::CSeq(_)
                 | h @ Header::From(_)
                 | h @ Header::Via(_) => headers.push(h),
-                ref h @ Header::To(ref to) => match to.tag()? {
-                    Some(_) => headers.push(h.clone()),
-                    None => {
+                ref h @ Header::To(ref to) => match (to.tag()?, self.to.clone()) {
+                    (Some(_), _) => headers.push(h.clone()),
+                    (None, Some(to)) => headers.push(to.into()),
+                    (None, None) => {
                         let to = to.typed()?.with_tag(rand_chars(&mut self.rng, 16).into());
                         self.to = Some(to.clone());
                         headers.push(to.into());
@@ -452,6 +481,10 @@ impl Dialog {
         req.headers.push(Expires::from(3600).into());
     }
 
+    pub fn set_to(&mut self, to: To) {
+        self.to = Some(to);
+    }
+
     pub async fn register(&mut self, password: String) -> Result<()> {
         let req = self.new_register_request()?;
         self.send(req).await?;
@@ -495,27 +528,14 @@ impl Dialog {
         self.send(req).await?;
 
         let resp = self.recv().await?;
-        assert_status(&resp.try_into()?)?;
+        assert_status(&resp.clone().try_into()?)?;
 
         Ok(())
     }
 
     pub async fn ack(&mut self, resp: Response) -> Result<()> {
         let mut req = self.new_request(Method::Ack, vec![]);
-        for header in resp.headers.clone() {
-            match header {
-                h @ Header::ContentType(_)
-                | h @ Header::ContentLength(_)
-                | h @ Header::From(_)
-                | h @ Header::To(_) => {
-                    req.headers.push(h);
-                }
-                _ => {}
-            }
-        }
-        if resp.body.len() > 0 {
-            req.body = resp.body.clone(); // Copy over SDP
-        }
+
         let cseq = resp.cseq_header()?.seq()?;
         req.cseq_header_mut()?.mut_seq(cseq)?;
         self.send(req).await?;

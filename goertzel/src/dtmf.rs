@@ -110,52 +110,52 @@ impl<'a> Goertzeler<'a> {
             }
         };
 
-        let pretty_row_nrgs = row_nrgs
-            .clone()
-            .into_iter()
-            .map(|(idx, nrg)| format!("{}:{:.5} ", idx, nrg.log10()))
-            .collect::<String>();
-        let pretty_col_nrgs = col_nrgs
-            .clone()
-            .into_iter()
-            .map(|(idx, nrg)| format!("{}:{:.5} ", idx, nrg.log10()))
-            .collect::<String>();
-        let (row_idx, row_nrg) = row_nrgs[0];
-        let (col_idx, col_nrg) = col_nrgs[0];
-        trace!("");
-        trace!("{}", digit);
-        trace!(
-            "{}: row_nrg ({:.5}) >= THRESH_MAG ({})",
-            row_nrg >= THRESH_MAG,
-            row_nrg.log10(),
-            THRESH_MAG.log10()
-        );
-        trace!(
-            "{}: col_nrg ({:.5}) >= THRESH_MAG ({})",
-            col_nrg >= THRESH_MAG,
-            col_nrg.log10(),
-            THRESH_MAG.log10()
-        );
-        trace!(
-            "{}: row_nrg ({:.5}) >= row_nrgs[1].1 ({:.5}) * THRESH_REL_PEAKS ({:.5}) (R: {:.5})",
-            row_nrg >= row_nrgs[1].1 * THRESH_REL_PEAKS[row_idx],
-            row_nrg.log10(),
-            row_nrgs[1].1.log10(),
-            (row_nrgs[1].1 * THRESH_REL_PEAKS[row_idx]).log10(),
-            row_nrg / row_nrgs[1].1
-        );
-        trace!(
-            "{}: col_nrg ({:.5}) >= col_nrgs[1].1 ({:.5}) * THRESH_REL_PEAKS ({:.5}) (R: {:.5})",
-            col_nrg >= col_nrgs[1].1 * THRESH_REL_PEAKS[col_idx],
-            col_nrg.log10(),
-            col_nrgs[1].1.log10(),
-            (col_nrgs[1].1 * THRESH_REL_PEAKS[col_idx]).log10(),
-            col_nrg / col_nrgs[1].1
-        );
-        trace!("{}: row_nrg + col_nrg ({:.5}) >= THRESH_REL_ENERGY * self.total_energy ({:.5}) (R: {:.5})", row_nrg + col_nrg >= THRESH_REL_ENERGY * self.total_energy, (row_nrg + col_nrg).log10(), (THRESH_REL_ENERGY * self.total_energy).log10(), (row_nrg + col_nrg) / self.total_energy);
-        trace!("{} {}", col_nrgs[0].1.log10(), row_nrgs[0].1.log10());
-        trace!(pretty_row_nrgs);
-        trace!(pretty_col_nrgs);
+        //let pretty_row_nrgs = row_nrgs
+        //    .clone()
+        //    .into_iter()
+        //    .map(|(idx, nrg)| format!("{}:{:.5} ", idx, nrg.log10()))
+        //    .collect::<String>();
+        //let pretty_col_nrgs = col_nrgs
+        //    .clone()
+        //    .into_iter()
+        //    .map(|(idx, nrg)| format!("{}:{:.5} ", idx, nrg.log10()))
+        //    .collect::<String>();
+        //let (row_idx, row_nrg) = row_nrgs[0];
+        //let (col_idx, col_nrg) = col_nrgs[0];
+        //trace!("");
+        //trace!("{}", digit);
+        //trace!(
+        //    "{}: row_nrg ({:.5}) >= THRESH_MAG ({})",
+        //    row_nrg >= THRESH_MAG,
+        //    row_nrg.log10(),
+        //    THRESH_MAG.log10()
+        //);
+        //trace!(
+        //    "{}: col_nrg ({:.5}) >= THRESH_MAG ({})",
+        //    col_nrg >= THRESH_MAG,
+        //    col_nrg.log10(),
+        //    THRESH_MAG.log10()
+        //);
+        //trace!(
+        //    "{}: row_nrg ({:.5}) >= row_nrgs[1].1 ({:.5}) * THRESH_REL_PEAKS ({:.5}) (R: {:.5})",
+        //    row_nrg >= row_nrgs[1].1 * THRESH_REL_PEAKS[row_idx],
+        //    row_nrg.log10(),
+        //    row_nrgs[1].1.log10(),
+        //    (row_nrgs[1].1 * THRESH_REL_PEAKS[row_idx]).log10(),
+        //    row_nrg / row_nrgs[1].1
+        //);
+        //trace!(
+        //    "{}: col_nrg ({:.5}) >= col_nrgs[1].1 ({:.5}) * THRESH_REL_PEAKS ({:.5}) (R: {:.5})",
+        //    col_nrg >= col_nrgs[1].1 * THRESH_REL_PEAKS[col_idx],
+        //    col_nrg.log10(),
+        //    col_nrgs[1].1.log10(),
+        //    (col_nrgs[1].1 * THRESH_REL_PEAKS[col_idx]).log10(),
+        //    col_nrg / col_nrgs[1].1
+        //);
+        //trace!("{}: row_nrg + col_nrg ({:.5}) >= THRESH_REL_ENERGY * self.total_energy ({:.5}) (R: {:.5})", row_nrg + col_nrg >= THRESH_REL_ENERGY * self.total_energy, (row_nrg + col_nrg).log10(), (THRESH_REL_ENERGY * self.total_energy).log10(), (row_nrg + col_nrg) / self.total_energy);
+        //trace!("{} {}", col_nrgs[0].1.log10(), row_nrgs[0].1.log10());
+        //trace!(pretty_row_nrgs);
+        //trace!(pretty_col_nrgs);
 
         digit
     }
