@@ -6,6 +6,7 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{debug_handler, Router};
 use rsip::prelude::{HeadersExt, ToTypedHeader};
+use tracing::info;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{self, fmt, EnvFilter};
@@ -21,7 +22,13 @@ async fn main() {
         .init();
 
     let app = Router::new()
-        .route("/healthcheck", get(|| async { "healthy" }))
+        .route(
+            "/healthcheck",
+            get(|| async {
+                info!("thx for checkin in");
+                "healthy"
+            }),
+        )
         .route("/dial", post(post_handler));
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:8000").await.unwrap();
@@ -30,8 +37,10 @@ async fn main() {
 
 #[debug_handler]
 async fn post_handler() -> Result<&'static str, AppError> {
+    info!("getting public ip");
     let ip = public_ip::addr_v4().await.ok_or(anyhow!("no ip"))?;
 
+    info!("getting tls conn");
     let tls_conn = tlssocket::TlsSipConn::new(ip, SERVER_NAME, SERVER_PORT).await?;
 
     let password = env::var("SIP_PASSWORD")?;
