@@ -11,7 +11,7 @@ use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{self, fmt, EnvFilter};
 
 use goertzel::contacts::CONTACTS;
-use goertzel::sip::{tlssocket, SERVER_NAME, SERVER_PORT};
+use goertzel::sip::{assert_status, tlssocket, SERVER_NAME, SERVER_PORT};
 
 #[tokio::main]
 async fn main() {
@@ -45,6 +45,7 @@ async fn post_handler() -> Result<&'static str, AppError> {
     dialog.invite(password.clone(), to.clone()).await?;
 
     let resp_200 = dialog.recv().await?;
+    assert_status(&resp_200.clone().try_into()?)?;
     dialog.set_to(resp_200.to_header()?.typed()?);
 
     let msg = dialog.recv().await?;
