@@ -58,8 +58,11 @@ impl TlsSipConn {
             dialogs: dialogs.clone(),
         };
 
+        debug!("Getting connector");
         let connector = get_tls_connector();
+        debug!("Connecting to sock {}, {}", &host, port);
         let sock = TcpStream::connect((host, port)).await?;
+        debug!("Getting connector");
         let stream = connector
             .connect(ServerName::try_from(host)?.to_owned(), sock)
             .await?;
