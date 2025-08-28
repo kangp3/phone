@@ -30,20 +30,39 @@
         margin-left: auto;
         margin-right: auto;
       }
+      p {
+        text-align: center;
+        font-size: 3rem;
+      }
     </style>
 </head>
 <body>
     <form id="phorm">
-        <input type="submit" value="Call" />
+      <input type="submit" value="Call" />
+      <br />
+      <p id="thumbs"></p>
     </form>
     <script>
-        const form = document.getElementById("phorm");
+      const form = document.getElementById("phorm");
+      const thumbs = document.getElementById("thumbs");
 
-        form.onsubmit = (e) => {
-          e.preventDefault();
+      thumbs.innerHTML = "👋";
+      setTimeout(() => thumbs.innerHTML = "", 3000);
 
-          fetch("https://dial.frandline.com/dial", { method: "POST" });
-        };
+      form.onsubmit = (e) => {
+        e.preventDefault();
+
+        thumbs.innerHTML = "📞";
+        fetch("https://dial.frandline.com/dial", { method: "POST" })
+          .then(({ status }) => {
+            if (status === 200) {
+              thumbs.innerHTML = "👍";
+            } else {
+              thumbs.innerHTML = "👎";
+            }
+            setTimeout(() => thumbs.innerHTML = "", 3000);
+          });
+      };
     </script>
 </body>
 </html>
