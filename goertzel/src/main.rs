@@ -27,10 +27,10 @@ async fn main() -> Result<()> {
     let phone = Phone::new(username, password).await?;
     info!("Got mic, listening...");
 
-    {
-        let _ring = ring::ring_phone()?;
-        sleep(Duration::from_secs(1)).await;
-    }
+    //{
+    //    let _ring = ring::ring_phone()?;
+    //    sleep(Duration::from_secs(1)).await;
+    //}
 
     if let Err(e) = phone.begin_life().await {
         error!("{:?}", e);
