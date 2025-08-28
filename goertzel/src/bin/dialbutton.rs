@@ -37,10 +37,8 @@ async fn main() {
 
 #[debug_handler]
 async fn post_handler() -> Result<&'static str, AppError> {
-    info!("getting public ip");
     let ip = public_ip::addr_v4().await.ok_or(anyhow!("no ip"))?;
 
-    info!("getting tls conn");
     let tls_conn = tlssocket::TlsSipConn::new(ip, SERVER_NAME, SERVER_PORT).await?;
 
     let password = env::var("SIP_PASSWORD")?;
