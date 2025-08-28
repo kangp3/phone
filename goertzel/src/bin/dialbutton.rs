@@ -1,11 +1,12 @@
 use std::env;
 
 use anyhow::{anyhow, Result};
-use axum::http::StatusCode;
+use axum::http::{HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{debug_handler, Router};
 use rsip::prelude::{HeadersExt, ToTypedHeader};
+use tower_http::cors::CorsLayer;
 use tracing::info;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
@@ -21,6 +22,12 @@ async fn main() {
         .with(EnvFilter::from_default_env())
         .init();
 
+    let cors = CorsLayer::new().allow_origin(
+        "https://button.frandline.com"
+            .parse::<HeaderValue>()
+            .unwrap(),
+    );
+
     let app = Router::new()
         .route(
             "/healthcheck",
@@ -29,7 +36,8 @@ async fn main() {
                 "healthy"
             }),
         )
-        .route("/dial", post(post_handler));
+        .route("/dial", post(post_handler))
+        .layer(cors);
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:8000").await.unwrap();
     axum::serve(listener, app).await.unwrap();
