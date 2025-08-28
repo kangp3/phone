@@ -59,6 +59,7 @@ sudo cp bootconfig.txt /boot/firmware/config.txt
 ### Install phreak.service
 ```
 scp goertzel/phreak.service recurse@peterpi.local:
+scp goertzel/phreak.timer recurse@peterpi.local:
 scp goertzel/target/arm-unknown-linux-gnueabihf/release/goertzel recurse@peterpi.local:
 ```
 ```
@@ -67,6 +68,12 @@ sudo chmod 777 ~/phreak.service
 sudo mv ~/phreak.service /etc/systemd/system
 sudo systemctl disable phreak.service
 sudo systemctl enable phreak.service
+
+sudo chown root:root ~/phreak.timer
+sudo chmod 777 ~/phreak.timer
+sudo mv ~/phreak.timer /etc/systemd/system
+sudo systemctl enable phreak.timer
+sudo systemctl start phreak.timer
 ```
 
 ### Install .asoundrc

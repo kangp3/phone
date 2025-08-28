@@ -4,13 +4,11 @@ Requires=NetworkManager.service
 After=network-online.target
 
 [Service]
-Restart=on-failure
-RestartSec=20
+Restart=always
+RestartSec=1
 Environment=RUST_LOG=debug
-Environment=SIP_SERVER_ADDRESS=10.100.8.255:5060
-Environment=SIP_USERNAME=1103
+Environment=SIP_USERNAME=1102
 Environment=SIP_PASSWORD=supersupersecuresecret
-ExecStartPre=/bin/sleep 30
 ExecStart=/home/recurse/goertzel
 
 [Install]
