@@ -42,7 +42,7 @@
         form.onsubmit = (e) => {
           e.preventDefault();
 
-          fetch("https://dial.frandline.com/healthcheck");
+          fetch("https://dial.frandline.com/dial", { method: "POST" });
         };
     </script>
 </body>
