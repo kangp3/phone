@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>A Button that Calls a Phone</title>
+    <style>
+      * {
+        -moz-box-sizing: border-box;
+        -webkit-box-sizing: border-box;
+        border-box: border-box;
+      }
+      body {
+        align-items: center;
+        display: flex;
+        flex-direction: column;
+        height: 100vh;
+        justify-content: center;
+      }
+      form {
+        max-width: 30rem;
+        width: 90%;
+      }
+      input {
+        display: block;
+        margin-bottom: 1rem;
+      }
+      input[type="submit"] {
+        font-size: 1.5rem;
+        margin-left: auto;
+        margin-right: auto;
+      }
+    </style>
+</head>
+<body>
+    <form id="phorm">
+        <input type="submit" value="Call" />
+    </form>
+    <script>
+        const form = document.getElementById("phorm");
+
+        form.onsubmit = (e) => {
+          e.preventDefault();
+
+          fetch("https://dial.frandline.com/healthcheck");
+        };
+    </script>
+</body>
+</html>
