@@ -557,3 +557,40 @@ impl Dialog {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod should {
+    use super::*;
+    use uuid::uuid;
+
+    const CHANNEL_SIZE: usize = 1 << 16;
+
+    const DUMMY_HOST: &str = "testy.pbx.corm";
+    const DUMMY_PORT: u16 = 5060;
+    const DUMMY_IP: &str = "192.168.1.1";
+    const DUMMY_UUID: Uuid = uuid!("deadbeef-dead-beef-dead-beefdeadbeef");
+    const DUMMY_USERNAME: &str = "Testy Guy";
+
+    fn new_dummy_dialog() -> Result<(Dialog, mpsc::Sender<SipMessage>, mpsc::Receiver<SipMessage>)>
+    {
+        let server_host = HostWithPort::from((DUMMY_HOST, DUMMY_PORT));
+        let (mock_sender, mock_rx_ch) = mpsc::channel(CHANNEL_SIZE);
+        let (mock_tx_ch, mock_receiver) = mpsc::channel(CHANNEL_SIZE);
+        let dialog = Dialog::new(
+            server_host,
+            DUMMY_IP.parse()?,
+            DUMMY_UUID,
+            DUMMY_USERNAME.into(),
+            mock_tx_ch,
+            mock_rx_ch,
+        );
+
+        Ok((dialog, mock_sender, mock_receiver))
+    }
+
+    #[test]
+    fn successfully_create_a_dialog() -> Result<()> {
+        new_dummy_dialog()?;
+        Ok(())
+    }
+}
