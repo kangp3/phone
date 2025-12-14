@@ -589,8 +589,10 @@ mod should {
     }
 
     #[test]
-    fn successfully_create_a_dialog() -> Result<()> {
-        new_dummy_dialog()?;
-        Ok(())
+    fn successfully_create_a_register_request() -> Result<()> {
+        let (mut dialog, _, _) = new_dummy_dialog()?;
+        let req = dialog.new_register_request()?;
+        println!("{}", req);
+        Err(anyhow!("asdf"))
     }
 }
